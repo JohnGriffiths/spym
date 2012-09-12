@@ -14,7 +14,7 @@ Operating System :: Unix
 """
 
 setup(
-    name='regions',
+    name='spm_loader',
     description='Utility functions to extract relevant information from an SPM.mat file',
     # long_description=open('README.md').read(),
     version=spm_loader.__version__,
