@@ -25,11 +25,14 @@ def get_fmri_data(data, indices):
 
 def estimate(spmmat, contrast_definitions=None,
              out_dir=tempfile.gettempdir(), model='ar1',
-             create_snapshots=True, keep_doc=True, **options):
+             create_snapshots=True, keep_doc=True,
+             contrast_names=None, **options):
 
     doc = load_intra(spmmat, inputs=True, outputs=True, **options)
     if contrast_definitions is None:
         contrast_definitions = [{k: 1} for k in doc['contrasts']]
+    if contrast_names is None:
+        contrast_names = {}
 
     print 'Estimating %s %s' % (doc['study'], doc['subject'])
 
@@ -71,12 +74,14 @@ def estimate(spmmat, contrast_definitions=None,
 
     sessions_contrasts = []
     for session in range(n_sessions):
-        contrasts = {}
+        c = {}
         for def_ in contrast_definitions:
             positive = '_'.join(
-                [k for k in sorted(def_.keys()) if def_[k] == 1])
+                [k if k not in contrast_names else contrast_names[k]
+                 for k in sorted(def_.keys()) if def_[k] > 0])
             negative = '_'.join(
-                [k for k in sorted(def_.keys()) if def_[k] == -1])
+                [k if k not in contrast_names else contrast_names[k]
+                 for k in sorted(def_.keys()) if def_[k] < 0])
             if negative != '':
                 name = '%s-%s' % (positive, negative)
             else:
@@ -86,8 +91,8 @@ def estimate(spmmat, contrast_definitions=None,
                 conditions += np.array(
                     doc['contrasts'][k])[cond_idx[session]] * def_[k]
 
-            contrasts[name] = conditions / conditions.max()
-        sessions_contrasts.append(contrasts)
+            c[name] = conditions / conditions.max()
+        sessions_contrasts.append(c)
 
     for j, (design_matrix, contrasts, time_indices) in enumerate(zip(
             design_matrices, sessions_contrasts, time_idx)):
@@ -96,12 +101,8 @@ def estimate(spmmat, contrast_definitions=None,
         fmri_glm = FMRILinearModel(data, design_matrix, mask=doc['mask'])
         fmri_glm.fit(do_scaling=True, model=model)
 
-        #########################################
-        # Estimate the contrasts
-        #########################################
-
-        for i, (contrast_id, contrast_val) in enumerate(
-                contrasts.iteritems()):
+        # estimate the contrasts
+        for i, (contrast_id, contrast_val) in enumerate(contrasts.iteritems()):
 
             # save the z_image
             image_path = os.path.join(
@@ -113,7 +114,7 @@ def estimate(spmmat, contrast_definitions=None,
             # Create snapshots of the contrasts
             if create_snapshots:
                 pl.clf()
-                z_map_data = np.array(z_map, copy=True)
+                z_map_data = np.array(z_map.get_data(), copy=True)
                 vmax = max(- z_map_data.min(), z_map_data.max())
                 plot_map(z_map_data, z_map.get_affine(),
                          cmap=cm.cold_hot,
