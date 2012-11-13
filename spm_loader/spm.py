@@ -35,11 +35,11 @@ def _find_data_dir(wd, fpath):
         while p != '':
             yield p.split(pt.sep, 1)[0]
 
-    if not pt.exists(fpath):
+    if not pt.isfile(fpath):
         for rs in right_splits(wd):
             for ls in left_splits(fpath):
                 p = pt.join(rs, *ls.split(pt.sep))
-                if pt.exists(p):
+                if pt.isfile(p):
                     return pt.dirname(p)
     else:
         return pt.dirname(fpath)
@@ -79,7 +79,7 @@ def load_intra(location, inputs=True, outputs=True, **options):
         analysis['t_maps'] = {}
         analysis['contrasts'] = {}
 
-        for i, c in enumerate(spmmat.xCon):
+        for c in spmmat.xCon:
             name = str(c.name)
             scon = _prefix_filename(c.Vcon.fname, 's')
 
@@ -95,15 +95,9 @@ def load_intra(location, inputs=True, outputs=True, **options):
 
     if inputs:
         analysis['data'] = []
-        for i, Y in enumerate(spmmat.xY.P):
+        for Y in spmmat.xY.P:
+            Y = str(Y).strip()
             data_dir = _find_data_dir(wd, Y)
-            analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]).strip())
+            analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
 
     return analysis
-
-
-if __name__ == '__main__':
-    ex = '/neurospin/unicog/protocols/IRMf/MainDatabaseLocalizers_PinelMoreno_2008/Subjects/s13465/fMRI/acquisition1/analysis/stats_localizer_1/SPM.mat'
-    ex = '/neurospin/unicog/protocols/IRMf/Complexity_Devauchelle_Pallier_2009.new/Subjects/j_tc080177/fMRI/acquisition1/analysis/hrf_deriv/SPM.mat'
-    a = load_intra(ex)
-    
