@@ -97,7 +97,7 @@ def load_intra(location, inputs=True, outputs=True, **options):
         analysis['data'] = []
         for i, Y in enumerate(spmmat.xY.P):
             data_dir = _find_data_dir(wd, Y)
-            analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
+            analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]).strip())
 
     return analysis
 

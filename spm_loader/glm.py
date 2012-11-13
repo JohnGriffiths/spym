@@ -90,8 +90,10 @@ def estimate(spmmat, contrast_definitions=None,
             for k in def_:
                 conditions += np.array(
                     doc['contrasts'][k])[cond_idx[session]] * def_[k]
-
-            c[name] = conditions / conditions.max()
+            if len(np.unique(conditions)) == 1:
+                print 'Warning: contrast %s not estimable' % name
+                continue
+            c[name] = conditions / float(conditions.max())
         sessions_contrasts.append(c)
 
     for j, (design_matrix, contrasts, time_indices) in enumerate(zip(
