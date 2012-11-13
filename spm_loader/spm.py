@@ -4,23 +4,26 @@ import os.path as pt
 import scipy.io as sio
 
 
-_call_options = ['f_tweak', 'smooth']
+_call_options = []
+
 
 def _load_mat(location):
     if location.endswith('.gz'):
         return sio.loadmat(
-            gzip.open(location, 'rb'), 
-            squeeze_me=True, 
+            gzip.open(location, 'rb'),
+            squeeze_me=True,
             struct_as_record=False
             )['SPM']
 
     return sio.loadmat(
         location, squeeze_me=True, struct_as_record=False)['SPM']
 
+
 def _wdir(wd):
     def func(path):
         return pt.join(str(wd), pt.split(str(path))[1])
     return func
+
 
 def _find_data_dir(wd, fpath):
 
@@ -40,15 +43,17 @@ def _find_data_dir(wd, fpath):
                     return pt.dirname(p)
     else:
         return pt.dirname(fpath)
-    
+
+
 def _prefix_filename(path, prefix):
     path, filename = pt.split(str(path))
     return pt.join(path, '%s%s' % (prefix, filename))
-    
+
+
 def load_intra(location, inputs=True, outputs=True, **options):
     spmmat = _load_mat(location)
 
-    wd, _ = pt.split(pt.realpath(location)) # work dir
+    wd, _ = pt.split(pt.realpath(location))  # work dir
     bd = _wdir(wd)                           # beta directory
 
     analysis = {}
@@ -59,13 +64,13 @@ def load_intra(location, inputs=True, outputs=True, **options):
                 analysis[opt] = wd.split(pt.sep)[options[opt]]
             else:
                 analysis[opt] = options[opt]
-            
-    analysis['design_matrix'] = spmmat.xX.X.tolist()          # xX: design
-    analysis['conditions'] = [str(i) for i in spmmat.xX.name] # xX: design
+
+    analysis['design_matrix'] = spmmat.xX.X.tolist()           # xX: design
+    analysis['conditions'] = [str(i) for i in spmmat.xX.name]  # xX: design
     analysis['n_scans'] = spmmat.nscan.tolist()
     analysis['n_sessions'] = spmmat.nscan.size
-    analysis['TR'] = float(spmmat.xY.RT) # xY: data
-    analysis['mask'] = bd(spmmat.VM.fname) # VM: mask
+    analysis['TR'] = float(spmmat.xY.RT)    # xY: data
+    analysis['mask'] = bd(spmmat.VM.fname)  # VM: mask
 
     if outputs:
         analysis['b_maps'] = {}
@@ -87,13 +92,13 @@ def load_intra(location, inputs=True, outputs=True, **options):
             name = str(b.descrip)
 
             analysis['b_maps'][name] = bd(b.fname)
-        
+
     if inputs:
         analysis['data'] = []
         for i, Y in enumerate(spmmat.xY.P):
             data_dir = _find_data_dir(wd, Y)
             analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
-    
+
     return analysis
 
 
