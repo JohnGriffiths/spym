@@ -23,12 +23,16 @@ def get_fmri_data(data, indices):
                               affine=nb.load(data).get_affine())
 
 
-def estimate(spmmat, contrast_definitions=None,
+def estimate(spmmat_or_doc, contrast_definitions=None,
              out_dir=tempfile.gettempdir(), model='ar1',
              create_snapshots=True, keep_doc=True,
              contrast_names=None, **options):
 
-    doc = load_intra(spmmat, inputs=True, outputs=True, **options)
+    if isinstance(spmmat_or_doc, dict):
+        doc = spmmat_or_doc
+    else:
+        doc = load_intra(spmmat_or_doc, inputs=True, outputs=True, **options)
+
     if contrast_definitions is None:
         contrast_definitions = [{k: 1} for k in doc['contrasts']]
     if contrast_names is None:
