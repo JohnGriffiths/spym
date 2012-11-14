@@ -28,12 +28,14 @@ def _wdir(wd):
 def _find_data_dir(wd, fpath):
 
     def right_splits(p):
-        while p != '':
-            yield p.rsplit(pt.sep, 1)[0]
+        while p not in ['', None]:
+            p = p.rsplit(pt.sep, 1)[0]
+            yield p
 
     def left_splits(p):
-        while p != '':
-            yield p.split(pt.sep, 1)[0]
+        while len(p.split(pt.sep, 1)) > 1:
+            p = p.split(pt.sep, 1)[1]
+            yield p
 
     if not pt.isfile(fpath):
         for rs in right_splits(wd):
@@ -67,7 +69,8 @@ def load_intra(location, inputs=True, outputs=True, **options):
 
     analysis['design_matrix'] = spmmat.xX.X.tolist()           # xX: design
     analysis['conditions'] = [str(i) for i in spmmat.xX.name]  # xX: design
-    analysis['n_scans'] = spmmat.nscan.tolist()
+    analysis['n_scans'] = spmmat.nscan.tolist() \
+        if isinstance(spmmat.nscan.tolist(), list) else [spmmat.nscan.tolist()]
     analysis['n_sessions'] = spmmat.nscan.size
     analysis['TR'] = float(spmmat.xY.RT)    # xY: data
     analysis['mask'] = bd(spmmat.VM.fname)  # VM: mask
@@ -98,6 +101,9 @@ def load_intra(location, inputs=True, outputs=True, **options):
         for Y in spmmat.xY.P:
             Y = str(Y).strip()
             data_dir = _find_data_dir(wd, Y)
-            analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
+            if data_dir is not None:
+                analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
+            else:
+                analysis['data'].append(pt.split(Y)[1])
 
     return analysis
