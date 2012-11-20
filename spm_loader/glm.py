@@ -23,10 +23,38 @@ def get_fmri_data(data, indices):
                               affine=nb.load(data).get_affine())
 
 
+def get_frmi_runs(data, runs):
+    runs = [slice(*run) if isinstance(run, tuple) else run for run in runs]
+    if isinstance(data, list):
+        return [nb.concat_images(data[run]) for run in runs]
+    elif isinstance(data, (str, unicode)):
+        return [nb.Nifti1Image(nb.load(data).get_data()[run, :],
+                affine=nb.load(data).get_affine())
+                for run in runs]
+
+
+def fit_glm(data, design_matrices, mask, do_scaling, model):
+    glm = FMRILinearModel(data, design_matrices, mask)
+    glm.fit(do_scaling, model=model)
+    return glm
+
+
+def contrast_name(definition, contrast_names=None):
+    if contrast_names is None:
+        contrast_names = {}
+    conds = sorted(definition.keys())
+    rep = lambda c: contrast_names[c] if c in contrast_names else c
+    pos = '_'.join([rep(c) for c in conds if definition[c] > 0])
+    neg = '_'.join([rep(c) for c in conds if definition[c] < 0])
+    return '%s-%s' % (pos, neg) if neg else pos
+
+
 def estimate(spmmat_or_doc, contrast_definitions=None,
              out_dir=tempfile.gettempdir(), model='ar1',
              create_snapshots=True, keep_doc=True,
-             contrast_names=None, **options):
+             contrast_names=None, mem=None, **options):
+
+    _fit_glm = mem.cache(fit_glm) if mem else fit_glm
 
     if isinstance(spmmat_or_doc, dict):
         doc = spmmat_or_doc
@@ -50,84 +78,71 @@ def estimate(spmmat_or_doc, contrast_definitions=None,
 
     # timing
     n_scans = doc['n_scans']
-    n_sessions = len(n_scans)
+    n_runs = len(n_scans)
 
     # design matrix
-    cond_idx = []
-    time_idx = []
+    conds_ind = []
+    vols_ind = []
     design_matrices = []
-    spm_dm = np.array(doc['design_matrix'])[:, :-n_sessions]
+    spm_dm = np.array(doc['design_matrix'])[:, :-n_runs]
 
     pl.clf()
     pl.matshow(spm_dm)
     pl.savefig(os.path.join(write_dir, 'design_matrix_SPM.png'))
 
     i = 0
-    for session, s_scans in enumerate(n_scans):
+    for run, s_scans in enumerate(n_scans):
         dm = spm_dm[i:i + s_scans, :]
-        session_idx, = np.where(np.logical_not(np.sum(dm, axis=0) == 0))
-        cond_idx.append(session_idx)
-        time_idx.append((i, i + s_scans))
-        design_matrices.append(dm[:, session_idx])
+        run_ind, = np.where(np.logical_not(np.sum(dm, axis=0) == 0))
+        conds_ind.append(run_ind)
+        vols_ind.append((i, i + s_scans))
+        design_matrices.append(dm[:, run_ind])
         i += s_scans
         if create_snapshots:
             pl.clf()
-            pl.matshow(dm[:, session_idx])
+            pl.matshow(dm[:, run_ind])
             pl.savefig(os.path.join(
-                write_dir, 'design_matrix_session#%s.png' % session))
+                write_dir, 'design_matrix_run#%s.png' % run))
 
-    sessions_contrasts = []
-    for session in range(n_sessions):
-        c = {}
-        for def_ in contrast_definitions:
-            positive = '_'.join(
-                [k if k not in contrast_names else contrast_names[k]
-                 for k in sorted(def_.keys()) if def_[k] > 0])
-            negative = '_'.join(
-                [k if k not in contrast_names else contrast_names[k]
-                 for k in sorted(def_.keys()) if def_[k] < 0])
-            if negative != '':
-                name = '%s-%s' % (positive, negative)
-            else:
-                name = positive
-            conditions = np.zeros(len(cond_idx[session]))
-            for k in def_:
-                conditions += np.array(
-                    doc['contrasts'][k])[cond_idx[session]] * def_[k]
-            if len(np.unique(conditions)) == 1:
-                print 'Warning: contrast %s not estimable' % name
-                continue
-            c[name] = conditions / float(conditions.max())
-        sessions_contrasts.append(c)
+    contrasts = {}
+    for run_ind in conds_ind:                # cond indices per run
+        for condef in contrast_definitions:
+            name = contrast_name(condef, contrast_names)
+            conds = np.zeros(len(run_ind))
+            for k in condef:
+                conds += np.array(doc['contrasts'][k])[run_ind] * condef[k]
+            if np.unique(conds).size != 1:
+                conds /= float(conds.max())
+            contrasts.setdefault(name, []).append(conds)
 
-    for j, (design_matrix, contrasts, time_indices) in enumerate(zip(
-            design_matrices, sessions_contrasts, time_idx)):
+    data = get_frmi_runs(doc['data'], vols_ind)
 
-        data = get_fmri_data(doc['data'], time_indices)
-        fmri_glm = FMRILinearModel(data, design_matrix, mask=doc['mask'])
-        fmri_glm.fit(do_scaling=True, model=model)
+    for index, (contrast_id, contrast_val) in enumerate(contrasts.items()):
+        print '  Contrast % 2i out of %i: %s' % (
+            index + 1, len(contrasts), contrast_id)
 
-        # estimate the contrasts
-        for i, (contrast_id, contrast_val) in enumerate(contrasts.iteritems()):
+        z_image_path = os.path.join(write_dir, '%s_z_map.nii.gz' % contrast_id)
+        con_runs = np.array([np.unique(c).size != 1 for c in contrast_val])
 
-            # save the z_image
-            image_path = os.path.join(
-                write_dir, 'z_map#%s_session#%s.nii.gz' % (contrast_id, j))
-            z_map, = fmri_glm.contrast(
-                contrast_val, con_id=contrast_id, output_z=True)
-            nb.save(z_map, image_path)
+        d = np.array(data)[con_runs].tolist()
+        c = np.array(contrast_val)[con_runs].tolist()
+        m = [dm for run, dm in zip(con_runs, design_matrices) if run]
+        glm = _fit_glm(d, m, doc['mask'], True, model=model)
 
-            # Create snapshots of the contrasts
-            if create_snapshots:
-                pl.clf()
-                z_map_data = np.array(z_map.get_data(), copy=True)
-                vmax = max(- z_map_data.min(), z_map_data.max())
-                plot_map(z_map_data, z_map.get_affine(),
-                         cmap=cm.cold_hot,
-                         vmin=- vmax,
-                         vmax=vmax,
-                         anat=None,
-                         figure=10,
-                    threshold=2.5)
-                pl.savefig(os.path.join(
-                    write_dir, 'z_map#%s_session#%s.png' % (contrast_id, j)))
+        z_map, = glm.contrast(c, con_id=contrast_id, output_z=True)
+        nb.save(z_map, z_image_path)
+
+        # Create snapshots of the contrasts
+        if create_snapshots:
+            pl.clf()
+            z_map_data = np.array(z_map.get_data(), copy=True)
+            vmax = max(- z_map_data.min(), z_map_data.max())
+            plot_map(z_map_data, z_map.get_affine(),
+                     cmap=cm.cold_hot,
+                     vmin=- vmax,
+                     vmax=vmax,
+                     anat=None,
+                     figure=10,
+                threshold=2.5)
+            pl.savefig(os.path.join(
+                write_dir, '%s_z_map.png' % contrast_id))
