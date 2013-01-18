@@ -76,7 +76,7 @@ def load_intra(location, inputs=True, outputs=True, **options):
     analysis['mask'] = bd(spmmat.VM.fname)  # VM: mask
 
     if outputs:
-        analysis['b_maps'] = {}
+        analysis['b_maps'] = []
         analysis['c_maps'] = {}
         analysis['c_maps_smoothed'] = {}
         analysis['t_maps'] = {}
@@ -92,18 +92,20 @@ def load_intra(location, inputs=True, outputs=True, **options):
             analysis['contrasts'][name] = c.c.tolist()
 
         for i, b in enumerate(spmmat.Vbeta):
-            name = str(b.descrip)
-
-            analysis['b_maps'][name] = bd(b.fname)
+            analysis['b_maps'].append(bd(b.fname))
 
     if inputs:
+        analysis['raw_data'] = []
         analysis['data'] = []
         for Y in spmmat.xY.P:
             Y = str(Y).strip()
             data_dir = _find_data_dir(wd, Y)
             if data_dir is not None:
                 analysis['data'].append(pt.join(data_dir, pt.split(Y)[1]))
+                analysis['raw_data'].append(
+                    pt.join(data_dir, pt.split(Y)[1].strip('swa')))
             else:
                 analysis['data'].append(pt.split(Y)[1])
+                analysis['raw_data'].append(pt.split(Y)[1].strip('swa'))
 
     return analysis
