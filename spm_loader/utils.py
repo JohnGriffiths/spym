@@ -4,13 +4,15 @@ import multiprocessing
 
 import nibabel as nb
 import numpy as np
+import scipy.ndimage as ndimage
 
 from nipy.modalities.fmri.glm import FMRILinearModel
 
 
 def fix_docs(docs, fix=None, fields=None):
     if fields is None:
-        fields = ['t_maps', 'c_maps', 'c_maps_smoothed', 'contrasts']
+        fields = ['t_maps', 'c_maps',
+                  'c_maps_smoothed', 'contrast_definitions']
     if fix is None or fix == {}:
         return docs
     fixed_docs = []
@@ -92,9 +94,10 @@ def _export(doc, out_dir, outputs):
 
     # fMRI
     if 'data' in doc and outputs.get('data', True):
-        for dtype in ['raw_data', 'data']:
+        for dtype in ['raw_data', 'data', 'bold',
+                      'bold_swa', 'bold_wa', 'bold_a']:
             img = nb.concat_images(doc[dtype])
-            fname = 'bold' if dtype == 'data' else 'raw_bold'
+            fname = dtype.replace('data', 'bold')
             nb.save(img, os.path.join(subject_dir, '%s.nii.gz' % fname))
 
     # mask
@@ -112,22 +115,36 @@ def _export(doc, out_dir, outputs):
         json.dump(contrasts, open(path, 'wb'))
 
 
-def _get_timeseries(data, row_mask, affine=None):
+def _get_timeseries(data, row_mask, affine=None, fwhm=None):
     if isinstance(data, list):
-        return nb.concat_images(np.array(data)[row_mask])
+        img = nb.concat_images(np.array(data)[row_mask])
     elif isinstance(data, (str, unicode)):
         img = nb.load(data)
-        return nb.Nifti1Image(img.get_data()[row_mask, :], img.get_affine())
+        img = nb.Nifti1Image(img.get_data()[row_mask, :], img.get_affine())
     elif isinstance(data, (np.ndarray, np.memmap)):
         if affine is None:
             raise Exception('The affine is not optional '
                             'when data is an array')
-        return nb.Nifti1Image(data[row_mask, :], affine)
+        img = nb.Nifti1Image(data[row_mask, :], affine)
     else:
         raise ValueError('Data type "%s" not supported' % type(data))
 
+    # smooth data if necessary
+    if fwhm is not None:
+        fwhm = float(fwhm)
+        affine = img.get_affine()
+        pixdims = img.get_header()['pixdim'][1:4]
+        sigmas = [fwhm / pixdim / 2.35 for pixdim in pixdims]
 
-def load_glm_params(doc):
+        data = []
+        for vol in np.rollaxis(img.get_data(), 3, 0):
+            data.append(ndimage.gaussian_filter(vol, sigmas)[None, :])
+
+        img = nb.Nifti1Image(np.rollaxis(np.vstack(data), 0, 4), affine=affine)
+    return img
+
+
+def load_glm_params(doc, smoothed=True):
     params = {}
 
     n_scans = doc['n_scans']
@@ -156,7 +173,13 @@ def load_glm_params(doc):
                 session_contrast /= session_contrast.max()
             session_contrasts[contrast_id] = session_contrast
         params['contrasts'].append(session_contrasts)
-        params['data'].append(_get_timeseries(doc['data'], row_mask))
+        if smoothed is True:
+            params['data'].append(_get_timeseries(doc['data'], row_mask))
+        elif isinstance(smoothed, (int, float)):
+            params['data'].append(_get_timeseries(doc['bold_wa'],
+                                                  row_mask, fwhm=smoothed))
+        else:
+            params['data'].append(_get_timeseries(doc['bold_wa'], row_mask))
         offset += scans_count
 
     return params
@@ -181,7 +204,7 @@ def make_contrasts(params, definitions):
 
 
 def execute_glm(doc, out_dir, contrast_definitions=None,
-                outputs=None, glm_model='ar1'):
+                outputs=None, hrf_model='ar1', smoothed=True):
     study_dir = os.path.join(out_dir, doc['study'])
     subject_dir = os.path.join(study_dir, 'subjects', doc['subject'])
 
@@ -192,12 +215,12 @@ def execute_glm(doc, out_dir, contrast_definitions=None,
 
     export([doc], out_dir, outputs=outputs)
 
-    params = load_glm_params(doc)
+    params = load_glm_params(doc, smoothed)
 
     glm = FMRILinearModel(params['data'],
                           params['design_matrices'], doc['mask'])
 
-    glm.fit(do_scaling=True, model=glm_model)
+    glm.fit(do_scaling=True, model=hrf_model)
 
     if contrast_definitions is not None:
         params['contrasts'] = make_contrasts(params, contrast_definitions)
@@ -228,18 +251,20 @@ def execute_glm(doc, out_dir, contrast_definitions=None,
 
 
 def execute_glms(docs, out_dir, contrast_definitions=None,
-                 outputs=None, glm_model='ar1', n_jobs=1):
+                 outputs=None, hrf_model='ar1', smoothed=True, n_jobs=1):
 
     n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
 
     if n_jobs == 1:
         for doc in docs:
-            execute_glm(doc, out_dir, contrast_definitions, outputs, glm_model)
+            execute_glm(doc, out_dir, contrast_definitions,
+                        outputs, hrf_model, smoothed)
     else:
         pool = multiprocessing.Pool(processes=n_jobs)
         for doc in docs:
             pool.apply_async(
                 execute_glm,
-                args=(doc, out_dir, contrast_definitions, outputs, glm_model))
+                args=(doc, out_dir, contrast_definitions,
+                      outputs, hrf_model, smoothed))
         pool.close()
         pool.join()
