@@ -1,18 +1,15 @@
 import os
-import json
-import multiprocessing
+import re
+import gzip
 
-import nibabel as nb
-import numpy as np
-import scipy.ndimage as ndimage
-
-from nipy.modalities.fmri.glm import FMRILinearModel
+import scipy.io as sio
 
 
-def fix_docs(docs, fix=None, fields=None):
+def fix_experiment(docs, fix=None, fields=None):
+    if isinstance(docs, dict):
+        docs = [docs]
     if fields is None:
-        fields = ['t_maps', 'c_maps',
-                  'c_maps_smoothed', 'contrast_definitions']
+        fields = ['t_maps', 'c_maps', 'task_contrasts']
     if fix is None or fix == {}:
         return docs
     fixed_docs = []
@@ -32,239 +29,204 @@ def fix_docs(docs, fix=None, fields=None):
                         field,
                         {}).setdefault(fix[name], doc[field][name])
 
+        fixed_conditions = []
+        for session_conditions in doc['condition_key']:
+            fixed_cond = []
+            for cond in session_conditions:
+                if cond in fix:
+                    fixed_cond.append(fix[cond])
+                else:
+                    fixed_cond.append(cond)
+            fixed_conditions.append(fixed_cond)
+        fixed_doc['condition_key'] = fixed_conditions
+
         fixed_docs.append(fixed_doc)
 
     return fixed_docs
 
 
-def export(docs, out_dir, fix=None, outputs=None, n_jobs=1):
-    """ Export data described in documents to fixed folder structure.
-
-        e.g. {out_dir}/{study_name}/subjects/{subject_id}/c_maps/...
-
-        Parameters
-        ----------
-        out_dir: string
-            Destination directory.
-        docs: list
-            List of documents
-        fix: dict
-            Map names for c_maps and t_maps
-        outputs: dict
-            Data to export, default is True for all.
-            Possible keys are 'maps', 'data', 'mask', 'model'
-            e.g. outputs = {'maps': False} <=> export all but maps
-    """
-    docs = fix_docs(docs, fix)
-
-    n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
-
-    if n_jobs == 1:
-        for doc in docs:
-            _export(doc, out_dir, outputs)
-    else:
-        pool = multiprocessing.Pool(processes=n_jobs)
-        for doc in docs:
-            pool.apply_async(_export, args=(doc, out_dir, outputs))
-        pool.close()
-        pool.join()
+def fix_subject_ids(docs, fix):
+    subjects = sorted([doc['subject_id'] for doc in docs])
+    norm = dict([(sid, 'sub%03i' % (i + 1))
+                for i, sid in enumerate(subjects)])
+    mapping = {}
+    for doc in docs:
+        mapping[norm[doc['subject_id']]] = fix[doc['subject_id']]['subject_id']
+        doc['subject_id'] = norm[doc['subject_id']]
+    return docs, mapping
 
 
-def _export(doc, out_dir, outputs):
-    study_dir = os.path.join(out_dir, doc['study'])
-    subject_dir = os.path.join(study_dir, 'subjects', doc['subject'])
-
-    if not os.path.exists(study_dir):
-        os.makedirs(study_dir)
-    if not os.path.exists(subject_dir):
-        os.makedirs(subject_dir)
-
-    if outputs is None:
-        outputs = {}
-    # maps
-    if outputs.get('maps', True):
-        for dtype in ['t_maps', 'c_maps']:
-            map_dir = os.path.join(subject_dir, dtype)
-            if not os.path.exists(map_dir):
-                os.makedirs(map_dir)
-            for label, fpath in doc[dtype].iteritems():
-                img = nb.load(fpath)
-                fname = '%s.nii.gz' % label.replace(' ', '_')
-                nb.save(img, os.path.join(map_dir, fname))
-
-    # fMRI
-    if 'data' in doc and outputs.get('data', True):
-        for dtype in ['raw_data', 'data', 'bold',
-                      'bold_swa', 'bold_wa', 'bold_a']:
-            img = nb.concat_images(doc[dtype])
-            fname = dtype.replace('data', 'bold')
-            nb.save(img, os.path.join(subject_dir, '%s.nii.gz' % fname))
-
-    # mask
-    if outputs.get('mask', True):
-        img = nb.load(doc['mask'])
-        nb.save(img, os.path.join(subject_dir, 'mask.nii.gz'))
-
-    # model
-    if outputs.get('model', True):
-        design_matrix = doc['design_matrix']
-        path = os.path.join(subject_dir, 'design_matrix.json')
-        json.dump(design_matrix, open(path, 'wb'))
-        contrasts = doc['contrasts']
-        path = os.path.join(subject_dir, 'contrasts.json')
-        json.dump(contrasts, open(path, 'wb'))
-
-
-def _get_timeseries(data, row_mask, affine=None, fwhm=None):
-    if isinstance(data, list):
-        img = nb.concat_images(np.array(data)[row_mask])
-    elif isinstance(data, (str, unicode)):
-        img = nb.load(data)
-        img = nb.Nifti1Image(img.get_data()[row_mask, :], img.get_affine())
-    elif isinstance(data, (np.ndarray, np.memmap)):
-        if affine is None:
-            raise Exception('The affine is not optional '
-                            'when data is an array')
-        img = nb.Nifti1Image(data[row_mask, :], affine)
-    else:
-        raise ValueError('Data type "%s" not supported' % type(data))
-
-    # smooth data if necessary
-    if fwhm is not None:
-        fwhm = float(fwhm)
-        affine = img.get_affine()
-        pixdims = img.get_header()['pixdim'][1:4]
-        sigmas = [fwhm / pixdim / 2.35 for pixdim in pixdims]
-
-        data = []
-        for vol in np.rollaxis(img.get_data(), 3, 0):
-            data.append(ndimage.gaussian_filter(vol, sigmas)[None, :])
-
-        img = nb.Nifti1Image(np.rollaxis(np.vstack(data), 0, 4), affine=affine)
-    return img
-
-
-def load_glm_params(doc, smoothed=True):
-    params = {}
-
-    n_scans = doc['n_scans']
-    n_sessions = len(n_scans)
-
-    design_matrix = np.array(doc['design_matrix'])[:, :-n_sessions]
-
-    params['design_matrices'] = []
-    params['contrasts'] = []
-    params['data'] = []
-
-    offset = 0
-    for session_id, scans_count in enumerate(n_scans):
-        session_dm = design_matrix[offset:offset + scans_count, :]
-        column_mask = ~(np.sum(session_dm, axis=0) == 0)
-        row_mask = np.zeros(np.sum(n_scans), dtype=np.bool)
-        row_mask[offset:offset + scans_count] = True
-
-        params['design_matrices'].append(session_dm[:, column_mask])
-
-        session_contrasts = {}
-        for contrast_id in doc['contrasts']:
-            contrast = np.array(doc['contrasts'][contrast_id])
-            session_contrast = contrast[column_mask]
-            if not np.all(session_contrast == 0):
-                session_contrast /= session_contrast.max()
-            session_contrasts[contrast_id] = session_contrast
-        params['contrasts'].append(session_contrasts)
-        if smoothed is True:
-            params['data'].append(_get_timeseries(doc['data'], row_mask))
-        elif isinstance(smoothed, (int, float)):
-            params['data'].append(_get_timeseries(doc['bold_wa'],
-                                                  row_mask, fwhm=smoothed))
-        else:
-            params['data'].append(_get_timeseries(doc['bold_wa'], row_mask))
-        offset += scans_count
-
-    return params
-
-
-def make_contrasts(params, definitions):
-    new_contrasts = []
-    for old_session_contrasts in params['contrasts']:
-        new_session_contrasts = {}
-        for new_contrast_id in definitions:
-            contrast = None
-            for old_contrast_id in definitions[new_contrast_id]:
-                scaler = definitions[new_contrast_id][old_contrast_id]
-                con = np.array(old_session_contrasts[old_contrast_id]) * scaler
-                if contrast is None:
-                    contrast = con
-                else:
-                    contrast += con
-            new_session_contrasts[new_contrast_id] = contrast
-        new_contrasts.append(new_session_contrasts)
-    return new_contrasts
-
-
-def execute_glm(doc, out_dir, contrast_definitions=None,
-                outputs=None, hrf_model='ar1', smoothed=True):
-    study_dir = os.path.join(out_dir, doc['study'])
-    subject_dir = os.path.join(study_dir, 'subjects', doc['subject'])
-
-    if outputs is None:
-        outputs = {'maps': False, 'data': False}
-    else:
-        outputs['maps'] = False
-
-    export([doc], out_dir, outputs=outputs)
-
-    params = load_glm_params(doc, smoothed)
-
-    glm = FMRILinearModel(params['data'],
-                          params['design_matrices'], doc['mask'])
-
-    glm.fit(do_scaling=True, model=hrf_model)
-
-    if contrast_definitions is not None:
-        params['contrasts'] = make_contrasts(params, contrast_definitions)
-    contrasts = sorted(params['contrasts'][0].keys())
-
-    for index, contrast_id in enumerate(contrasts):
-        print ' study[%s] subject[%s] contrast [%s]: %i/%i' % (
-            doc['study'], doc['subject'],
-            contrast_id, index + 1, len(contrasts)
+def load_mat(location):
+    if location.endswith('.gz'):
+        return sio.loadmat(
+            gzip.open(location, 'rb'),
+            squeeze_me=True,
+            struct_as_record=False
             )
-        contrast = [c[contrast_id] for c in params['contrasts']]
-        contrast_name = contrast_id.replace(' ', '_')
-        z_map, t_map, c_map, var_map = glm.contrast(
-            contrast,
-            con_id=contrast_id,
-            output_z=True,
-            output_stat=True,
-            output_effects=True,
-            output_variance=True,)
 
-        for dtype, out_map in zip(['z', 't', 'c', 'variance'],
-                                  [z_map, t_map, c_map, var_map]):
-            map_dir = os.path.join(subject_dir, '%s_maps' % dtype)
-            if not os.path.exists(map_dir):
-                os.makedirs(map_dir)
-            map_path = os.path.join(map_dir, '%s.nii.gz' % contrast_name)
-            nb.save(out_map, map_path)
+    return sio.loadmat(
+        location, squeeze_me=True, struct_as_record=False)
 
 
-def execute_glms(docs, out_dir, contrast_definitions=None,
-                 outputs=None, hrf_model='ar1', smoothed=True, n_jobs=1):
+def find_data_dir(wd, fpath):
+    fpath = fpath.strip()
 
-    n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
+    def right_splits(p):
+        yield p
+        while p not in ['', None]:
+            p = p.rsplit(os.path.sep, 1)[0]
+            yield p
 
-    if n_jobs == 1:
-        for doc in docs:
-            execute_glm(doc, out_dir, contrast_definitions,
-                        outputs, hrf_model, smoothed)
+    def left_splits(p):
+        yield p
+        while len(p.split(os.path.sep, 1)) > 1:
+            p = p.split(os.path.sep, 1)[1]
+            yield p
+
+    if not os.path.isfile(fpath):
+        for rs in right_splits(wd):
+            if not os.path.exists(rs):
+                continue
+            for ls in left_splits(fpath):
+                p = os.path.join(rs, *ls.split(os.path.sep))
+                if os.path.isfile(p):
+                    return os.path.dirname(p)
     else:
-        pool = multiprocessing.Pool(processes=n_jobs)
-        for doc in docs:
-            pool.apply_async(
-                execute_glm,
-                args=(doc, out_dir, contrast_definitions,
-                      outputs, hrf_model, smoothed))
-        pool.close()
-        pool.join()
+        return os.path.dirname(fpath)
+    raise Exception('bla')
+    return ''
+
+
+def prefix_filename(path, prefix):
+    path, filename = os.path.split(str(path))
+    return os.path.join(path, '%s%s' % (prefix, filename))
+
+
+def strip_prefix_filename(path, len_strip):
+    path, filename = os.path.split(str(path))
+    return os.path.join(path, filename[len_strip:])
+
+
+def remove_special(name):
+    return re.sub("[^0-9a-zA-Z\-]+", '_', name)
+
+
+def report(preproc_docs=None, intra_docs=None):
+    if preproc_docs is not None:
+        doc = preproc_docs[0]
+
+        print '#' * 80
+        print 'preproc'
+        print '#' * 80
+
+        print
+        print '-' * 80
+        print 'slice timing'
+        print '-' * 80
+
+        print '  bold', all([os.path.exists(p)
+                             for s in doc['slice_timing']['bold'] for p in s])
+        print '  n_slices', doc['slice_timing']['n_slices']
+        print '  ref_slice', doc['slice_timing']['ref_slice']
+        print '  slices_order', doc['slice_timing']['slices_order']
+        print '  ta', doc['slice_timing']['ta']
+        print '  tr', doc['slice_timing']['tr']
+
+        print
+        print '-' * 80
+        print 'realign'
+        print '-' * 80
+
+        print '  bold', all([os.path.exists(p)
+                             for s in doc['realign']['bold'] for p in s])
+        print '  motion', all([os.path.exists(p)
+                               for p in doc['realign']['motion']])
+
+        print
+        print '-' * 80
+        print 'preproc/normalize'
+        print '-' * 80
+        try:
+
+            print '  anatomy', os.path.exists(doc['preproc']['anatomy'])
+            print '  norm anatomy', os.path.exists(doc['normalize']['anatomy'])
+            print '  norm mat_file', os.path.exists(
+                doc['normalize']['mat_file'])
+            print '  bold', all([
+                os.path.exists(p)
+                for s in doc['normalize']['bold'] for p in s])
+        except:
+            pass
+
+        print
+        print '-' * 80
+        print 'coregistration'
+        print '-' * 80
+
+        try:
+            print '  realigned', all([
+                os.path.exists(p) for p in doc['coregistration']['realigned']])
+            print '  anatomy', os.path.exists(doc['coregistration']['anatomy'])
+            print '  realigned_ref', os.path.exists(
+                doc['coregistration']['realigned_ref'])
+        except:
+            pass
+
+        print
+        print '-' * 80
+        print 'smooth'
+        print '-' * 80
+
+        print '  fwhm', doc['smooth']['fwhm']
+        print '  bold', all([
+            os.path.exists(p)
+            for s in doc['smooth']['bold'] for p in s])
+
+        print
+        print '-' * 80
+        print 'final'
+        print '-' * 80
+
+        print '  anatomy', os.path.exists(doc['final']['anatomy'])
+        print '  bold', all([
+            os.path.exists(p)
+            for s in doc['final']['bold'] for p in s])
+
+    if intra_docs is not None:
+        doc = intra_docs[0]
+
+        print
+        print '#' * 80
+        print 'stats intra'
+        print '#' * 80
+
+        print
+        print '-' * 80
+        print 'experiment'
+        print '-' * 80
+
+        print '  n_scans', doc['n_scans']
+        print '  n_sessions', doc['n_sessions']
+        print '  tr', doc['tr']
+
+        print
+        print '-' * 80
+        print 'maps'
+        print '-' * 80
+
+        print '  beta_maps', all([os.path.exists(p) for p in doc['beta_maps']])
+        print '  c_maps', all([os.path.exists(doc['c_maps'][c])
+                               for c in doc['c_maps']])
+
+        print '  t_maps', all([os.path.exists(doc['t_maps'][c])
+                               for c in doc['t_maps']])
+        print '  mask', os.path.exists(doc['mask'])
+
+        print
+        print '-' * 80
+        print 'experimental conditions'
+        print '-' * 80
+        for i, session_conditions in enumerate(doc['condition_key']):
+            print '  session%03i:' % (i + 1)
+            for cond in session_conditions:
+                print '   ', cond
