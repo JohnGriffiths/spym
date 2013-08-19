@@ -2,6 +2,7 @@ import os
 import glob
 import json
 import shutil
+import fnmatch
 import multiprocessing
 
 import numpy as np
@@ -10,9 +11,10 @@ import nibabel as nb
 from nipy.modalities.fmri.design_matrix import make_dmtx
 from nipy.modalities.fmri.experimental_paradigm import EventRelatedParadigm
 from nipy.modalities.fmri.experimental_paradigm import BlockParadigm
-from nipy.modalities.fmri.glm import FMRILinearModel
+from joblib import Parallel, delayed
 
 from utils import remove_special
+from glm import _first_level_glm
 
 
 # ----------------------------------------------------------------------------
@@ -47,7 +49,6 @@ def get_bold_images(subject_dir):
     images = []
     for session_dir in sorted(glob.glob(sessions)):
         img = nb.load(os.path.join(session_dir, 'normalized_bold.nii.gz'))
-
         images.append(img)
 
     n_scans = [img.shape[-1] for img in images]
@@ -55,7 +56,7 @@ def get_bold_images(subject_dir):
     return images, n_scans
 
 
-def get_task_contrasts(study_dir, subject_dir, model_id):
+def get_task_contrasts(study_dir, subject_dir, model_id, hrf_model):
     contrasts_path = os.path.join(
         study_dir, 'models', model_id, 'task_contrasts.txt')
 
@@ -65,6 +66,8 @@ def get_task_contrasts(study_dir, subject_dir, model_id):
         task_id = line[0]
         contrast_id = line[1]
         con_val = np.array(line[2:]).astype('float')
+        if 'with derivative' in hrf_model:
+            con_val = np.insert(con_val, np.arange(con_val.size) + 1, 0)
         task_contrasts.setdefault(task_id, {}).setdefault(contrast_id, con_val)
 
     ordered = {}
@@ -76,7 +79,7 @@ def get_task_contrasts(study_dir, subject_dir, model_id):
                 else:
                     a_con_id = task_contrasts[session_task_id].keys()[0]
                     n_conds = len(task_contrasts[session_task_id][a_con_id])
-                    con_val = np.array([0] * n_conds)
+                    con_val = np.array([0] * n_conds, dtype='float')
                 ordered.setdefault(contrast_id, []).append(con_val)
     return ordered
 
@@ -98,7 +101,10 @@ def get_events(subject_dir):
             onsets.append(cond_onsets)
             cond_id.append([i] * cond_onsets.shape[0])
 
-        events.append((np.vstack(onsets), np.concatenate(cond_id)))
+        onsets = np.vstack(onsets)
+        cond_id = np.concatenate(cond_id)
+
+        events.append((onsets, cond_id))
 
     return events
 
@@ -202,8 +208,7 @@ def _check_metadata(metadata, preproc_doc, intra_doc):
         metadata = {}
 
     if not 'run_key' in metadata:
-        metadata['run_key'] = ['task%03i run%03i' % (1, i + 1)
-                           for i in range(len(preproc_doc['n_scans']))]
+        raise Exception('Need a run_key in metadata')
 
     if not 'condition_key' in metadata:
         metadata['condition_key'] = {}
@@ -262,8 +267,8 @@ def _openfmri_preproc(out_dir, doc, metadata=None, verbose=1):
 
     bold_dir = os.path.join(subject_dir, 'BOLD')
 
-    for session, run_key in zip(
-            doc['slice_timing']['bold'], metadata['run_key']):
+    for session, run_key in zip(doc['slice_timing']['bold'],
+                                metadata['run_key']):
 
         bold = nb.concat_images(session)
         session_dir = os.path.join(bold_dir, run_key.replace(' ', '_'))
@@ -418,35 +423,30 @@ def _openfmri_metadata(out_dir, metadata):
 
 
 def first_level_glm(study_dir, subjects_id, model_id,
-                     hrf_model='canonical', drift_model='cosine',
+                     hrf_model='canonical with derivative',
+                     drift_model='cosine',
                      glm_model='ar1', mask='compute', n_jobs=-1, verbose=1):
-
-    n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
+    """ Utility function to compute first level GLMs in parallel
+    """
 
     if n_jobs == 1:
         for subject_id in subjects_id:
-            _first_level_glm(study_dir, subject_id, model_id,
-                        hrf_model=hrf_model,
-                        drift_model=drift_model,
-                        glm_model=glm_model, mask=mask, verbose=verbose)
+            _openfmri_first_level_glm(study_dir, subject_id, model_id,
+                                      hrf_model, drift_model, glm_model,
+                                      mask, verbose - 1)
     else:
-        pool = multiprocessing.Pool(processes=n_jobs)
-        for subject_id in subjects_id:
-            pool.apply_async(
-                _first_level_glm,
-                args=(study_dir, subject_id, model_id),
-                kwds={'hrf_model': hrf_model,
-                      'drift_model': drift_model,
-                    'glm_model': glm_model, 'mask': mask, 'verbose': verbose})
-
-        pool.close()
-        pool.join()
+        Parallel(n_jobs=n_jobs)(delayed(
+            _openfmri_first_level_glm)(
+                study_dir, subject_id, model_id,
+                hrf_model, drift_model, glm_model, mask, verbose - 1)
+                for subject_id in subjects_id
+            )
 
 
-def _first_level_glm(study_dir, subject_id, model_id,
-                     hrf_model='canonical', drift_model='cosine',
-                     glm_model='ar1', mask='compute', verbose=1):
-
+def _openfmri_first_level_glm(study_dir, subject_id, model_id,
+                              hrf_model='canonical with derivative',
+                              drift_model='cosine',
+                              glm_model='ar1', mask='compute', verbose=1):
     study_id = os.path.split(study_dir)[1]
     subject_dir = os.path.join(study_dir, subject_id)
 
@@ -456,44 +456,19 @@ def _first_level_glm(study_dir, subject_id, model_id,
     tr = get_study_tr(study_dir)
     images, n_scans = get_bold_images(subject_dir)
     motion = get_motion(subject_dir)
-    contrasts = get_task_contrasts(study_dir, subject_dir, model_id)
+    contrasts = get_task_contrasts(study_dir, subject_dir, model_id, hrf_model)
     events = get_events(subject_dir)
 
     design_matrices = make_design_matrices(events, n_scans, tr,
                                            hrf_model, drift_model, motion)
 
-    glm = FMRILinearModel(images, design_matrices, mask=mask)
-    glm.fit(do_scaling=True, model=glm_model)
+    import pylab as pl
 
-    for contrast_id in contrasts:
+    for session_id, dm in enumerate(design_matrices):
+        pl.matshow(dm)
+        pl.savefig('/tmp/%s_%s.png' % (subject_id, session_id + 1), dpi=300)
 
-        con_val = []
-        for session_con, session_dm in zip(contrasts[contrast_id],
-                                           design_matrices):
-            con = np.zeros(session_dm.shape[1])
-            con[:len(session_con)] = session_con
-            con_val.append(con)
+    model_dir = os.path.join(study_dir, subject_id, 'model', model_id)
 
-        z_map, t_map, c_map, var_map = glm.contrast(
-            con_val,
-            con_id=contrast_id,
-            output_z=True,
-            output_stat=True,
-            output_effects=True,
-            output_variance=True,)
-
-        model_dir = os.path.join(subject_dir, 'model',  model_id)
-
-        for dtype, img in zip(['z', 't', 'c', 'var'],
-                              [z_map, t_map, c_map, var_map]):
-
-            map_dir = os.path.join(model_dir, '%s_maps' % dtype)
-
-            if not os.path.exists(map_dir):
-                os.makedirs(map_dir)
-
-            path = os.path.join(
-                map_dir, '%s.nii.gz' % remove_special(contrast_id))
-            nb.save(img, path)
-
-    nb.save(glm.mask, os.path.join(model_dir, 'mask.nii.gz'))
+    _first_level_glm(model_dir, images, design_matrices,
+                     contrasts, glm_model, mask, verbose - 1)

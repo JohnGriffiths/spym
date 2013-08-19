@@ -2,7 +2,25 @@ import os
 import re
 import gzip
 
+import numpy as np
+import nibabel as nb
 import scipy.io as sio
+
+
+class Niimg(object):
+
+    def __init__(self, path):
+        img = nb.load(path)
+        self._path = path
+        self.shape = img.shape
+        self._affine = img.get_affine()
+
+    def get_affine(self):
+        return self._affine
+
+    def get_data(self):
+        img = nb.load(self._path)
+        return img.get_data()
 
 
 def fix_experiment(docs, fix=None, fields=None):
@@ -109,6 +127,36 @@ def strip_prefix_filename(path, len_strip):
 
 def remove_special(name):
     return re.sub("[^0-9a-zA-Z\-]+", '_', name)
+
+
+def check_niimgs(niimgs):
+    niimgs_ = []
+    for niimg in niimgs:
+        if isinstance(niimg, (str, unicode)):
+            niimgs_.append(Niimg(niimg))
+        elif isinstance(niimg, list):
+            niimgs_.append(nb.concat_images(niimg))
+        else:
+            niimgs_.append(niimg)
+    return niimgs_
+
+
+def check_design_matrices(design_matrices):
+    return [np.array(dm) for dm in design_matrices]
+
+
+def check_contrasts(contrasts):
+    contrasts_ = {}
+
+    for k in contrasts:
+        for session_contrast in contrasts[k]:
+            session_contrast = np.array(session_contrast)
+            if not len(session_contrast.shape) > 1:
+                contrasts_.setdefault(k, []).append(session_contrast)
+            else:
+                break
+
+    return contrasts_
 
 
 def report(preproc_docs=None, intra_docs=None):

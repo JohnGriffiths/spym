@@ -1,6 +1,7 @@
 import os
 import glob
 import hashlib
+import fnmatch
 import multiprocessing
 
 import numpy as np
@@ -37,7 +38,7 @@ def load_spm_design_matrix(design_matrix, n_scans, conditions):
     return design_matrices
 
 
-def load_preproc(location, **kwargs):
+def load_preproc(location, sessions_order=None, **kwargs):
     """ Loads the input parameters of the different processing steps of
         the SPM preprocessing.
 
@@ -234,6 +235,21 @@ def load_preproc(location, **kwargs):
     if 'subject_id' not in doc:
         doc['subject_id'] = hashlib.md5(work_dir).hexdigest()
 
+    if sessions_order is not None:
+        order = []
+        for session_pattern in sessions_order:
+            for i, bold in enumerate(doc['final']['bold']):
+                if fnmatch.fnmatch(os.path.split(bold[0])[1], session_pattern):
+                    order.append(i)
+                    break
+        order = np.array(order)
+
+        for step in doc.keys():
+            if 'bold' in doc[step]:
+                doc[step]['bold'] = np.array(doc[step]['bold'])[order].tolist()
+        doc['realign']['motion'] = np.array(
+            doc['realign']['motion'])[order].tolist()
+
     return doc
 
 
@@ -248,9 +264,9 @@ def load_intra(location, fix=None, **kwargs):
 
     # doc['mat'] = mat
 
-    doc['design_matrix'] = mat.xX.X.tolist()           # xX: model
-    doc['design_matrix_conditions'] = [str(i) for i in mat.xX.name]
-    doc['design_matrix_contrasts'] = {}
+    doc['design_matrices'] = mat.xX.X.tolist()           # xX: model
+    doc['design_conditions'] = [str(i) for i in mat.xX.name]
+    doc['design_contrasts'] = {}
 
     doc['n_scans'] = mat.nscan.tolist() \
         if isinstance(mat.nscan.tolist(), list) else [mat.nscan.tolist()]
@@ -336,7 +352,7 @@ def load_intra(location, fix=None, **kwargs):
 
         doc['c_maps'][name] = os.path.join(work_dir, str(c.Vcon.fname))
         doc['t_maps'][name] = os.path.join(work_dir, str(c.Vspm.fname))
-        doc['design_matrix_contrasts'][name] = c.c.tolist()
+        doc['design_contrasts'][name] = c.c.tolist()
 
     for i, b in enumerate(mat.Vbeta):
         doc['beta_maps'].append(os.path.join(work_dir, str(b.fname)))
@@ -345,7 +361,7 @@ def load_intra(location, fix=None, **kwargs):
         doc['subject_id'] = hashlib.md5(work_dir).hexdigest()
 
     def get_condition_index(name):
-        for i, full_name in enumerate(doc['design_matrix_conditions']):
+        for i, full_name in enumerate(doc['design_conditions']):
             if name in full_name:
                 return i
 
@@ -355,7 +371,7 @@ def load_intra(location, fix=None, **kwargs):
     for session in doc['condition_key']:
         ii.append([get_condition_index(name) for name in session])
     # redefine the contrasts with the experimental conditions
-    for k, contrast in doc['design_matrix_contrasts'].iteritems():
+    for k, contrast in doc['design_contrasts'].iteritems():
         doc['task_contrasts'][k] = []
 
         for per_session in ii:
@@ -371,6 +387,16 @@ def load_intra(location, fix=None, **kwargs):
                 and (contrast == np.abs(contrast).max()).sum() == 1):
                 ck[np.array(contrast) > 0] = contrast_name
     doc['condition_key'] = condition_key
+
+    # reformat SPM design per session
+    (doc['design_matrices'],
+     doc['design_conditions'],
+     doc['design_contrasts']) = make_design_from_spm(
+         doc['n_scans'],
+         doc['design_matrices'],
+         doc['design_conditions'],
+         doc['design_contrasts'])
+
     if fix is not None:
         doc = fix_experiment(doc, fix)[0]
     return doc
@@ -407,3 +433,24 @@ def load_dotmat_files(data_dir, study_id, subjects_id,
         docs = [doc.get() for doc in docs]
 
     return docs
+
+
+def make_design_from_spm(n_scans, design_matrix, conditions, contrasts):
+    n_sessions = len(n_scans)
+    design_matrices = np.vsplit(design_matrix, np.cumsum(n_scans[:-1]))
+    conditions = np.array(conditions)
+
+    sessions_dm = []
+    sessions_condition = []
+    sessions_contrast = {}
+    for i, dm in zip(range(n_sessions), design_matrices):
+        mask = np.array(
+            [cond.startswith('Sn(%s)' % (i + 1)) for cond in conditions])
+        sessions_dm.append(dm[:, mask][:, :-1].tolist())
+        sessions_condition.append(conditions[mask][:-1].tolist())
+
+        for contrast_id in contrasts:
+            sessions_contrast.setdefault(contrast_id, []).append(
+                np.array(contrasts[contrast_id])[mask][:-1].tolist())
+
+    return sessions_dm, sessions_condition, sessions_contrast
