@@ -230,8 +230,7 @@ def _load_openfmri(study_dir, subject_id, model_id,
     doc['study_id'] = os.path.split(study_dir)[1]
     doc['subject_id'] = subject_id
     doc['tr'] = get_scan_key(study_dir)['TR']
-    doc['data'] = {}
-    doc['data']['swabold'] = get_scans(subject_dir)
+    doc['data'] = get_scans(subject_dir)
     doc['n_scans'] = get_scans_count(subject_dir)
     doc['motion'] = get_motion(subject_dir)
     doc['task_contrasts'] = get_task_contrasts(
