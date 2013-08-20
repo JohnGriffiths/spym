@@ -20,17 +20,33 @@ def get_scan_key(study_dir):
     return scan_key
 
 
+def get_condition_key(study_dir):
+    conditions = {}
+    fname = os.path.join(study_dir, 'models', 'model001', 'condition_key.txt')
+    with open(fname, 'rb') as f:
+        for line in f.read().split('\n'):
+            try:
+                task_id, cond_id, cond_name = line.split(None, 2)
+                conditions.setdefault(task_id, set()).add(cond_id)
+            except:  # skip empy lines
+                pass
+
+    for k in conditions:
+        conditions[k] = sorted(conditions[k])
+    return conditions
+
+
 def get_subjects_id(study_dir):
     return [os.path.split(p)[1]
     for p in glob.glob(os.path.join(study_dir, 'sub*'))
                        if os.path.isdir(p)]
 
 
-def get_task_sessions(subject_dir):
+def get_sessions_id(subject_dir):
     """Get the list of scanning sessions with the performed task ids.
     """
     sessions = os.path.join(subject_dir, 'BOLD', '*')
-    return [os.path.split(session)[1].split('_')[0]
+    return [os.path.split(session)[1]
             for session in sorted(glob.glob(sessions))]
 
 
@@ -69,6 +85,14 @@ def get_scans(subject_dir):
     return scans
 
 
+def _get_contrast(line, hrf_model, offset):
+    contrast_id = line[offset]
+    con_val = np.array(line[1 + offset:]).astype('float')
+    if 'with derivative' in hrf_model:
+        con_val = np.insert(con_val, np.arange(con_val.size) + 1, 0)
+    return contrast_id, con_val
+
+
 def get_task_contrasts(study_dir, subject_dir, model_id, hrf_model):
     contrasts_path = os.path.join(
         study_dir, 'models', model_id, 'task_contrasts.txt')
@@ -77,47 +101,62 @@ def get_task_contrasts(study_dir, subject_dir, model_id, hrf_model):
     for line in open(contrasts_path, 'rb').read().split('\n')[:-1]:
         line = line.split()
         task_id = line[0]
-        contrast_id = line[1]
-        con_val = np.array(line[2:]).astype('float')
-        if 'with derivative' in hrf_model:
-            con_val = np.insert(con_val, np.arange(con_val.size) + 1, 0)
-        task_contrasts.setdefault(task_id, {}).setdefault(contrast_id, con_val)
+        if not task_id.startswith('task'):
+            for session_id in set(get_sessions_id(subject_dir)):
+                task_id = session_id.split('_')[0]
+                contrast_id, con_val = _get_contrast(line, hrf_model, offset=0)
+                task_contrasts.setdefault(task_id, {}).setdefault(
+                    contrast_id, con_val)
+        else:
+            contrast_id, con_val = _get_contrast(line, hrf_model, offset=1)
+            task_contrasts.setdefault(task_id, {}).setdefault(
+                contrast_id, con_val)
 
     ordered = {}
     for task_id in sorted(task_contrasts.keys()):
         for contrast_id in task_contrasts[task_id]:
-            for session_task_id in get_task_sessions(subject_dir):
+            for session_id in get_sessions_id(subject_dir):
+                session_task_id = session_id.split('_')[0]
                 if session_task_id == task_id:
                     con_val = task_contrasts[task_id][contrast_id]
                 else:
-                    a_con_id = task_contrasts[session_task_id].keys()[0]
-                    n_conds = len(task_contrasts[session_task_id][a_con_id])
-                    con_val = np.array([0] * n_conds, dtype='float')
+                    if not session_task_id in task_contrasts:
+                        con_val = np.array([0], dtype='float')
+                    else:
+                        one_con = task_contrasts[session_task_id].keys()[0]
+                        n_conds = len(task_contrasts[session_task_id][one_con])
+                        con_val = np.array([0] * n_conds, dtype='float')
                 ordered.setdefault(contrast_id, []).append(con_val)
     return ordered
 
 
-def get_events(subject_dir):
-    sessions = os.path.join(subject_dir, 'model', 'model001', 'onsets', '*')
-
+def get_events(study_dir, subject_dir):
     events = []
+    conditions = get_condition_key(study_dir)
 
-    for session_dir in sorted(glob.glob(sessions)):
-        conditions = glob.glob(os.path.join(session_dir, '*.txt'))
+    for session_id in get_sessions_id(subject_dir):
+        session_dir = os.path.join(
+            subject_dir, 'model', 'model001', 'onsets', session_id)
+        task_id = session_id.split('_')[0]
+
         onsets = []
-        cond_id = []
-        for i, path in enumerate(sorted(conditions)):
-            cond_onsets = open(path, 'rb').read().split('\n')
-            cond_onsets = [l.split() for l in cond_onsets[:-1]]
-            cond_onsets = np.array(cond_onsets).astype('float')
+        trials = []
+        for condition_id in conditions[task_id]:
+            fname = os.path.join(session_dir, '%s.txt' % condition_id)
+
+            if os.path.exists(fname):
+                cond_onsets = np.loadtxt(fname).astype('float')
+            else:
+                cond_onsets = np.array([[.0, .0, .0]])
 
             onsets.append(cond_onsets)
-            cond_id.append([i] * cond_onsets.shape[0])
+            condition_id = int(condition_id.split('cond')[1])
+            trials.append([condition_id] * cond_onsets.shape[0])
 
         onsets = np.vstack(onsets)
-        cond_id = np.concatenate(cond_id)
+        trials = np.concatenate(trials)
 
-        events.append((onsets, cond_id))
+        events.append((onsets, trials))
 
     return events
 
@@ -133,16 +172,16 @@ def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
         onsets = events[i][0][:, 0]
         duration = events[i][0][:, 1]
         amplitude = events[i][0][:, 2]
-        cond_id = events[i][1]
+        trials = events[i][1]
         order = np.argsort(onsets)
 
         # make a block or event paradigm depending on stimulus duration
         if duration.sum() == 0:
-            paradigm = EventRelatedParadigm(cond_id[order],
+            paradigm = EventRelatedParadigm(trials[order],
                                             onsets[order],
                                             amplitude[order])
         else:
-            paradigm = BlockParadigm(cond_id[order], onsets[order],
+            paradigm = BlockParadigm(trials[order], onsets[order],
                                      duration[order], amplitude[order])
 
         frametimes = np.linspace(0, (n_scans[i] - 1) * tr, n_scans[i])
@@ -199,7 +238,7 @@ def _load_openfmri(study_dir, subject_id, model_id,
     doc['task_contrasts'] = get_task_contrasts(
         study_dir, subject_dir, model_id, hrf_model)
 
-    events = get_events(subject_dir)
+    events = get_events(study_dir, subject_dir)
 
     doc['design_matrices'] = make_design_matrices(
         events, doc['n_scans'], doc['tr'],
