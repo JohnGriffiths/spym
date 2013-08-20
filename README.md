@@ -1,4 +1,4 @@
-spm_loader
-==========
+spym
+====
 
-Utility functions to extract relevant information from an SPM.mat file
+Loading utilities to perform Statistical Parametric Mapping in Python.

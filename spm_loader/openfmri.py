@@ -22,19 +22,31 @@ from glm import _first_level_glm
 # ----------------------------------------------------------------------------
 
 def get_scan_key(study_dir):
+    """Parse scan_key file to get scanning information (currently only TR).
+    """
     with open(os.path.join(study_dir, 'scan_key.txt')) as f:
         scan_key = dict(zip(*np.hsplit(np.array(f.read().split()), 2)))
     scan_key['TR'] = float(scan_key['TR'])
     return scan_key
 
 
+def get_subjects_id(study_dir):
+    return [os.path.split(p)[1]
+    for p in glob.glob(os.path.join(study_dir, 'sub*'))
+                       if os.path.isdir(p)]
+
+
 def get_task_sessions(subject_dir):
+    """Get the list of scanning sessions with the performed task ids.
+    """
     sessions = os.path.join(subject_dir, 'BOLD', '*')
     return [os.path.split(session)[1].split('_')[0]
             for session in sorted(glob.glob(sessions))]
 
 
 def get_motion(subject_dir):
+    """Get the motion parameters for this subject
+    """
     sessions = os.path.join(subject_dir, 'BOLD', '*')
 
     motion = []
@@ -45,17 +57,26 @@ def get_motion(subject_dir):
     return motion
 
 
-def get_bold_images(subject_dir):
+def get_scans_count(subject_dir):
     sessions = os.path.join(subject_dir, 'BOLD', '*')
 
-    images = []
+    n_scans = []
     for session_dir in sorted(glob.glob(sessions)):
         img = nb.load(os.path.join(session_dir, 'normalized_bold.nii.gz'))
-        images.append(img)
+        n_scans.append(img.shape[-1])
 
-    n_scans = [img.shape[-1] for img in images]
+    return n_scans
 
-    return images, n_scans
+
+def get_scans(subject_dir):
+    sessions = os.path.join(subject_dir, 'BOLD', '*')
+
+    scans = []
+    for session_dir in sorted(glob.glob(sessions)):
+        img = nb.load(os.path.join(session_dir, 'normalized_bold.nii.gz'))
+        scans.append(img)
+
+    return scans
 
 
 def get_task_contrasts(study_dir, subject_dir, model_id, hrf_model):
@@ -396,17 +417,14 @@ def _openfmri_metadata(out_dir, metadata):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    # naming the tasks
-    if 'task_key' in metadata:
-        with open(os.path.join(out_dir, 'task_key.txt'), 'wb') as f:
-            for key, val in sorted(metadata['task_key'].iteritems()):
-                f.write('%s %s\n' % (key, val))
-
-    # scanning info
-    if 'scan_key' in metadata:
-        with open(os.path.join(out_dir, 'scan_key.txt'), 'wb') as f:
-            for key, val in sorted(metadata['scan_key'].iteritems()):
-                f.write('%s %s\n' % (key, val))
+    for k in metadata:
+        if k.endswith('_key') and isinstance(metadata[k], dict):
+            fname = os.path.join(out_dir, '%s.txt' % k)
+            if not os.path.exists(os.path.split(fname)[0]):
+                os.makedirs(os.path.split(fname)[0])
+            with open(fname, 'wb') as f:
+                for key, val in sorted(metadata[k].iteritems()):
+                    f.write('%s %s\n' % (key, val))
 
     # extra info, for example subject_id mapping etc...
     if 'extras' in metadata:
@@ -456,7 +474,8 @@ def _openfmri_first_level_glm(study_dir, subject_id, model_id,
         print '%s@%s: first level glm' % (subject_id, study_id)
 
     tr = get_scan_key(study_dir)['TR']
-    images, n_scans = get_bold_images(subject_dir)
+    images = get_scans(subject_dir)
+    n_scans = get_scans_count(subject_dir)
     motion = get_motion(subject_dir)
     contrasts = get_task_contrasts(study_dir, subject_dir, model_id, hrf_model)
     events = get_events(subject_dir)
