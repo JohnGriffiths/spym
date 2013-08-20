@@ -21,9 +21,11 @@ from glm import _first_level_glm
 # parse openfmri layout
 # ----------------------------------------------------------------------------
 
-def get_study_tr(study_dir):
-    return float(
-        open(os.path.join(study_dir, 'scan_key.txt')).read().split()[1])
+def get_scan_key(study_dir):
+    with open(os.path.join(study_dir, 'scan_key.txt')) as f:
+        scan_key = dict(zip(*np.hsplit(np.array(f.read().split()), 2)))
+    scan_key['TR'] = float(scan_key['TR'])
+    return scan_key
 
 
 def get_task_sessions(subject_dir):
@@ -453,7 +455,7 @@ def _openfmri_first_level_glm(study_dir, subject_id, model_id,
     if verbose > 0:
         print '%s@%s: first level glm' % (subject_id, study_id)
 
-    tr = get_study_tr(study_dir)
+    tr = get_scan_key(study_dir)['TR']
     images, n_scans = get_bold_images(subject_dir)
     motion = get_motion(subject_dir)
     contrasts = get_task_contrasts(study_dir, subject_dir, model_id, hrf_model)
