@@ -74,7 +74,7 @@ def fix_subject_ids(docs, fix):
     return docs, mapping
 
 
-def load_mat(location):
+def load_matfile(location):
     if location.endswith('.gz'):
         return sio.loadmat(
             gzip.open(location, 'rb'),
@@ -146,17 +146,17 @@ def check_design_matrices(design_matrices):
 
 
 def check_contrasts(contrasts):
-    contrasts_ = {}
+    checked = {}
 
     for k in contrasts:
         for session_contrast in contrasts[k]:
             session_contrast = np.array(session_contrast)
             if not len(session_contrast.shape) > 1:
-                contrasts_.setdefault(k, []).append(session_contrast)
+                checked.setdefault(k, []).append(session_contrast)
             else:
                 break
 
-    return contrasts_
+    return checked
 
 
 def report(preproc_docs=None, intra_docs=None):

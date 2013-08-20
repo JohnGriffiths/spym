@@ -7,7 +7,7 @@ import multiprocessing
 import numpy as np
 
 from utils import fix_experiment
-from utils import load_mat
+from utils import load_matfile
 from utils import find_data_dir
 from utils import prefix_filename, strip_prefix_filename
 
@@ -22,20 +22,6 @@ def _check_kwargs(work_dir, **kwargs):
         else:
             doc[k] = kwargs[k]
     return doc
-
-
-def load_spm_design_matrix(design_matrix, n_scans, conditions):
-    design_matrices = []
-    n_sessions = len(n_scans)
-    design_matrix = np.array(design_matrix)[:, :-n_sessions]
-    conditions = np.array(conditions)[:-n_sessions]
-
-    for i, dm in enumerate(np.vsplit(design_matrix, np.cumsum(n_scans[:-1]))):
-        conditions_mask = np.array([
-            'Sn(%s)' % (i + 1) in c for c in conditions])
-        design_matrices.append(dm[:, conditions_mask])
-
-    return design_matrices
 
 
 def load_preproc(location, sessions_order=None, **kwargs):
@@ -67,7 +53,7 @@ def load_preproc(location, sessions_order=None, **kwargs):
 
     doc.update(_check_kwargs(work_dir, **kwargs))
 
-    mat = load_mat(location)['jobs']
+    mat = load_matfile(location)['jobs']
 
     doc['order'] = ['slice_timing', 'realign', 'preproc', 'normalize', 'final']
 
@@ -256,7 +242,7 @@ def load_preproc(location, sessions_order=None, **kwargs):
 def load_intra(location, fix=None, **kwargs):
     doc = {}
 
-    mat = load_mat(location)['SPM']
+    mat = load_matfile(location)['SPM']
 
     work_dir = os.path.split(os.path.realpath(location))[0]
 
@@ -402,9 +388,9 @@ def load_intra(location, fix=None, **kwargs):
     return doc
 
 
-def load_dotmat_files(data_dir, study_id, subjects_id,
-                      dotmat_relpath, load_dotmat,
-                      get_subject=None, n_jobs=-1, **kwargs):
+def load_spm(data_dir, study_id, subjects_id,
+             dotmat_relpath, load_mat_func,
+             get_subject=None, n_jobs=-1, **kwargs):
     docs = []
     n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
 
@@ -414,7 +400,7 @@ def load_dotmat_files(data_dir, study_id, subjects_id,
             kwds = dict(subject_id=get_subject, study_id=study_id)
             kwds.update(kwargs)
             mat_file = os.path.join(subject_dir, dotmat_relpath)
-            docs.append(load_dotmat(mat_file, **kwds))
+            docs.append(load_mat_func(mat_file, **kwds))
     else:
         pool = multiprocessing.Pool(processes=n_jobs)
         for subject_id in subjects_id:
@@ -422,7 +408,7 @@ def load_dotmat_files(data_dir, study_id, subjects_id,
             kwds = dict(subject_id=get_subject, study_id=study_id)
             kwds.update(kwargs)
             mat_file = os.path.join(subject_dir, dotmat_relpath)
-            ar = pool.apply_async(load_dotmat,
+            ar = pool.apply_async(load_mat_func,
                                   args=(mat_file, ),
                                   kwds=kwds)
             docs.append(ar)
