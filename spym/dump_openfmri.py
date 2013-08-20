@@ -204,7 +204,7 @@ def _openfmri_intra(out_dir, doc, metadata=None, verbose=1):
         run_dir = os.path.join(onsets_dir, run_key.replace(' ', '_'))
         if not os.path.exists(run_dir):
             os.makedirs(run_dir)
-        for condition_id, values in onsets.iteritems():
+        for condition_id, values in sorted(onsets.iteritems()):
             cond = os.path.join(run_dir, '%s.txt' % condition_id)
             with open(cond, 'wb') as f:
                 for timepoint in values:

@@ -389,7 +389,7 @@ def load_intra(location, fix=None, **kwargs):
 
 
 def load_spm(data_dir, study_id, subjects_id,
-             dotmat_relpath, load_mat_func,
+             dotmat_relpath, mat_func,
              get_subject=None, n_jobs=-1, **kwargs):
     docs = []
     n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
@@ -400,7 +400,7 @@ def load_spm(data_dir, study_id, subjects_id,
             kwds = dict(subject_id=get_subject, study_id=study_id)
             kwds.update(kwargs)
             mat_file = os.path.join(subject_dir, dotmat_relpath)
-            docs.append(load_mat_func(mat_file, **kwds))
+            docs.append(mat_func(mat_file, **kwds))
     else:
         pool = multiprocessing.Pool(processes=n_jobs)
         for subject_id in subjects_id:
@@ -408,7 +408,7 @@ def load_spm(data_dir, study_id, subjects_id,
             kwds = dict(subject_id=get_subject, study_id=study_id)
             kwds.update(kwargs)
             mat_file = os.path.join(subject_dir, dotmat_relpath)
-            ar = pool.apply_async(load_mat_func,
+            ar = pool.apply_async(mat_func,
                                   args=(mat_file, ),
                                   kwds=kwds)
             docs.append(ar)
