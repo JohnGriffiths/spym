@@ -148,9 +148,7 @@ def get_events(study_dir, subject_dir):
                 cond_onsets = np.loadtxt(fname).astype('float')
             else:
                 cond_onsets = np.array([[.0, .0, .0]])
-
             onsets.append(cond_onsets)
-            condition_id = int(condition_id.split('cond')[1])
             trials.append([condition_id] * cond_onsets.shape[0])
 
         onsets = np.vstack(onsets)
@@ -168,7 +166,6 @@ def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
     n_sessions = len(n_scans)
 
     for i in range(n_sessions):
-
         onsets = events[i][0][:, 0]
         duration = events[i][0][:, 1]
         amplitude = events[i][0][:, 2]
