@@ -166,7 +166,9 @@ def get_events(study_dir, subject_dir):
                 cond_onsets = np.array([[.0, .0, .0]])
             onsets.append(cond_onsets)
             condition_name = conditions_name[task_id][condition_id]
-            trials.append([condition_name] * cond_onsets.shape[0])
+            n_trials = cond_onsets.shape[0]
+            trials.append(
+                ['%s_%s' % (condition_id, condition_name)] * n_trials)
 
         onsets = np.vstack(onsets)
         trials = np.concatenate(trials)
