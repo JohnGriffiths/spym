@@ -27,7 +27,7 @@ def fix_experiment(docs, fix=None, fields=None):
     if isinstance(docs, dict):
         docs = [docs]
     if fields is None:
-        fields = ['t_maps', 'c_maps', 'task_contrasts']
+        fields = ['t_maps', 'c_maps', 'task_contrasts', 'design_contrasts']
     if fix is None or fix == {}:
         return docs
     fixed_docs = []
@@ -172,23 +172,30 @@ def report(preproc_docs=None, intra_docs=None):
         print 'slice timing'
         print '-' * 80
 
-        print '  bold', all([os.path.exists(p)
-                             for s in doc['slice_timing']['bold'] for p in s])
-        print '  n_slices', doc['slice_timing']['n_slices']
-        print '  ref_slice', doc['slice_timing']['ref_slice']
-        print '  slices_order', doc['slice_timing']['slices_order']
-        print '  ta', doc['slice_timing']['ta']
-        print '  tr', doc['slice_timing']['tr']
+        try:
+            print '  bold', all([os.path.exists(p)
+                                 for s in doc['slice_timing']['bold'] for p in s])
+            print '  n_slices', doc['slice_timing']['n_slices']
+            print '  ref_slice', doc['slice_timing']['ref_slice']
+            print '  slices_order', doc['slice_timing']['slices_order']
+            print '  ta', doc['slice_timing']['ta']
+            print '  tr', doc['slice_timing']['tr']
+        except:
+            pass
 
         print
         print '-' * 80
         print 'realign'
         print '-' * 80
 
-        print '  bold', all([os.path.exists(p)
-                             for s in doc['realign']['bold'] for p in s])
-        print '  motion', all([os.path.exists(p)
-                               for p in doc['realign']['motion']])
+        try:
+            print '  bold', all([os.path.exists(p)
+                                 for s in doc['realign']['bold'] for p in s])
+            print '  motion', all([os.path.exists(p)
+                                   for p in doc['realign']['motion']])
+
+        except:
+            pass
 
         print
         print '-' * 80
@@ -225,20 +232,27 @@ def report(preproc_docs=None, intra_docs=None):
         print 'smooth'
         print '-' * 80
 
-        print '  fwhm', doc['smooth']['fwhm']
-        print '  bold', all([
-            os.path.exists(p)
-            for s in doc['smooth']['bold'] for p in s])
+        try:
+            print '  fwhm', doc['smooth']['fwhm']
+            print '  bold', all([
+                os.path.exists(p)
+                for s in doc['smooth']['bold'] for p in s])
+        except:
+            pass
 
         print
         print '-' * 80
         print 'final'
         print '-' * 80
 
-        print '  anatomy', os.path.exists(doc['final']['anatomy'])
-        print '  bold', all([
-            os.path.exists(p)
-            for s in doc['final']['bold'] for p in s])
+        try:
+
+            print '  anatomy', os.path.exists(doc['final']['anatomy'])
+            print '  bold', all([
+                os.path.exists(p)
+                for s in doc['final']['bold'] for p in s])
+        except:
+            pass
 
     if intra_docs is not None:
         doc = intra_docs[0]

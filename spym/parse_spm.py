@@ -335,10 +335,13 @@ def load_intra(location, fix=None, **kwargs):
 
     for c in mat.xCon:
         name = str(c.name)
-
-        doc['c_maps'][name] = os.path.join(work_dir, str(c.Vcon.fname))
-        doc['t_maps'][name] = os.path.join(work_dir, str(c.Vspm.fname))
-        doc['design_contrasts'][name] = c.c.tolist()
+        try:
+            doc['c_maps'][name] = os.path.join(work_dir, str(c.Vcon.fname))
+            doc['t_maps'][name] = os.path.join(work_dir, str(c.Vspm.fname))
+            doc['design_contrasts'][name] = c.c.tolist()
+        except:
+            # sometimes c.Vcon is an empty array
+            pass
 
     for i, b in enumerate(mat.Vbeta):
         doc['beta_maps'].append(os.path.join(work_dir, str(b.fname)))

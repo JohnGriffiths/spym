@@ -159,8 +159,25 @@ def get_events(study_dir, subject_dir):
     return events
 
 
+def get_orthogonalize(study_dir, subject_dir):
+    orth = {}
+    tasks = [s.split('_')[0] for s in get_sessions_id(subject_dir)]
+
+    orth_file = os.path.join(
+        study_dir, 'models', 'model001', 'orthogonalize.txt')
+    if os.path.exists(orth_file):
+        with open(orth_file, 'rb') as f:
+            for task_id, c1, c2 in [
+                    l.split() for l in f.read().split('\n')[:-1]]:
+                orth.setdefault(task_id, []).append((c1, c2))
+    all_orth = []
+    for task_id in tasks:
+        all_orth.append(orth.get(task_id))
+    return all_orth
+
+
 def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
-                         drift_model='cosine', motion=None):
+                         drift_model='cosine', motion=None, orth=None):
 
     design_matrices = []
     n_sessions = len(n_scans)
@@ -197,6 +214,14 @@ def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
                 frametimes, paradigm, hrf_model=hrf_model,
                 drift_model=drift_model)
 
+        if orth is not None:
+            session_orth = orth[i]
+            if session_orth is not None:
+                for x, y in session_orth:
+                    reg = orthogonalize_regressors(
+                        design_matrix.matrix[:, x], design_matrix.matrix[:, y])
+                    design_matrix.matrix[:, x] = reg
+
         design_matrices.append(design_matrix.matrix)
 
     return design_matrices
@@ -204,26 +229,26 @@ def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
 
 def load_openfmri(study_dir, model_id,
                   hrf_model='canonical with derivative',
-                  drift_model='cosine', glm_model='ar1',
+                  drift_model='cosine',
                   n_jobs=-1, verbose=1):
 
     if n_jobs == 1:
         docs = []
         for subject_id in get_subjects_id(study_dir):
             docs.append(_load_openfmri(study_dir, subject_id, model_id,
-                                       hrf_model, drift_model, glm_model,
+                                       hrf_model, drift_model,
                                        verbose - 1))
     else:
         docs = Parallel(n_jobs=n_jobs)(delayed(
             _load_openfmri)(study_dir, subject_id, model_id,
-                            hrf_model, drift_model, glm_model, verbose - 1)
+                            hrf_model, drift_model, verbose - 1)
             for subject_id in get_subjects_id(study_dir))
 
     return docs
 
 
 def _load_openfmri(study_dir, subject_id, model_id,
-                   hrf_model, drift_model, glm_model, verbose):
+                   hrf_model, drift_model, verbose):
     doc = {}
     subject_dir = os.path.join(study_dir, subject_id)
 
@@ -237,9 +262,19 @@ def _load_openfmri(study_dir, subject_id, model_id,
         study_dir, subject_dir, model_id, hrf_model)
 
     events = get_events(study_dir, subject_dir)
+    orth = get_orthogonalize(study_dir, subject_dir)
 
     doc['design_matrices'] = make_design_matrices(
         events, doc['n_scans'], doc['tr'],
-        hrf_model, drift_model, doc['motion'])
+        hrf_model, drift_model, doc['motion'], orth=orth)
 
     return doc
+
+
+def orthogonalize_regressors(x, y):
+    x = np.array(x)
+    y = np.array(y)
+
+    s = np.dot(x, y) / np.sum(y ** 2)
+
+    return (x - y * s)

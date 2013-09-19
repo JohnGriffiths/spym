@@ -1,4 +1,5 @@
 import os
+from itertools import izip
 
 import numpy as np
 import nibabel as nb
@@ -11,7 +12,7 @@ from utils import check_niimgs, check_design_matrices, check_contrasts
 from utils import remove_special
 
 
-def _first_level_glm(out_dir, data, design_matrices, contrasts,
+def _first_level(out_dir, data, design_matrices, contrasts,
                     glm_model='ar1', mask='compute', verbose=1):
     if verbose:
         print '%s:' % out_dir
@@ -57,19 +58,33 @@ def _first_level_glm(out_dir, data, design_matrices, contrasts,
     nb.save(glm.mask, os.path.join(out_dir, 'mask.nii.gz'))
 
 
-def first_level_glm(out_dirs, all_data, all_design_matrices,
-                    contrasts, glm_model='ar1',
-                    mask='compute', n_jobs=-1, verbose=1):
-    """ Utility function to compute first level GLMs in parallel
-    """
+# def first_level(out_dir_gen, data_gen, design_matrices_gen,
+#                 contrasts, glm_model='ar1',
+#                 mask='compute', n_jobs=-1, verbose=1):
+#     """ Utility function to compute first level GLMs in parallel
+#     """
 
-    Parallel(n_jobs=n_jobs)(delayed(
-        _first_level_glm)(out_dir, data,
-                          design_matrices, contrasts,
-                          glm_model, mask, verbose)
-        for out_dir, data, design_matrices in zip(
-                out_dirs, all_data, all_design_matrices)
-        )
+#     if n_jobs == 1:
+#         for out_dir, data, design_matrices in izip(
+#                 out_dir_gen, data_gen, design_matrices_gen):
+
+
+    
+#             _first_level(out_dir, data,
+#                           design_matrices, contrasts,
+#                           glm_model, mask, verbose)
+#     else:
+#         for out_dir in out_dir_gen:
+            
+
+        
+#         Parallel(n_jobs=n_jobs)(delayed(
+#             _first_level)(out_dir, data,
+#                           design_matrices, contrasts,
+#                           glm_model, mask, verbose)
+#             for out_dir, data, design_matrices in izip(
+#                     out_dir_gen, data_gen, design_matrices_gen)
+#         )
 
 
 def openfmri_first_level(study_dir, subjects_id, model_id,
@@ -103,10 +118,10 @@ def _openfmri_first_level(study_dir, subject_id, model_id,
         print '%s@%s: first level glm' % (subject_id, study_id)
 
     doc = _load_openfmri(study_dir, subject_id, model_id,
-                         hrf_model, drift_model, glm_model, verbose)
+                         hrf_model, drift_model, verbose)
 
     model_dir = os.path.join(study_dir, subject_id, 'model', model_id)
 
-    _first_level_glm(model_dir, doc['data'], doc['design_matrices'],
-                     doc['task_contrasts'], glm_model,
-                     mask='compute', verbose=verbose - 1)
+    _first_level(model_dir, doc['data'], doc['design_matrices'],
+                 doc['task_contrasts'], glm_model,
+                 mask='compute', verbose=verbose - 1)
