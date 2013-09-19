@@ -58,28 +58,6 @@ def _first_level(out_dir, data, design_matrices, contrasts,
     nb.save(glm.mask, os.path.join(out_dir, 'mask.nii.gz'))
 
 
-# def first_level(out_dir_gen, data_gen, design_matrices_gen,
-#                 contrasts, glm_model='ar1',
-#                 mask='compute', n_jobs=-1, verbose=1):
-#     """ Utility function to compute first level GLMs in parallel
-#     """
-
-#     if n_jobs == 1:
-#         for out_dir, data, design_matrices in izip(
-#                 out_dir_gen, data_gen, design_matrices_gen):
-#             _first_level(out_dir, data,
-#                           design_matrices, contrasts,
-#                           glm_model, mask, verbose)
-#     else:
-#         for out_dir in out_dir_gen:
-#         Parallel(n_jobs=n_jobs)(delayed(
-#             _first_level)(out_dir, data,
-#                           design_matrices, contrasts,
-#                           glm_model, mask, verbose)
-#             for out_dir, data, design_matrices in izip(
-#                     out_dir_gen, data_gen, design_matrices_gen)
-#         )
-
 def openfmri_first_level(study_dir, subjects_id, model_id,
                          hrf_model='canonical with derivative',
                          drift_model='cosine',
@@ -116,3 +94,50 @@ def _openfmri_first_level(study_dir, subject_id, model_id,
     _first_level(model_dir, doc['data'], doc['design_matrices'],
                  doc['task_contrasts'], glm_model,
                  mask='compute', verbose=verbose - 1)
+
+if __name__ == '__main__':
+    from optparse import OptionParser
+
+    from parsing_openfmri import get_subjects_id
+    from utils import print_command_line_options
+
+    parser = OptionParser()
+    parser.add_option("-d", "--data-dir", dest="study_dir",
+                      help="Full path to study directory")
+    parser.add_option("-m", "--model-id",
+                      help="Model id. Mandatory for models report",
+                      dest='model_id')
+    parser.add_option("-n", "--n-jobs",
+                      help="number of parallel jobs. -1 means all cores.",
+                      dest='n_jobs', type='int', default=-1)
+    parser.add_option("-s", "--subject-id",
+                      help=("specify a subject_id to process "
+                            "only this one. Default processes all"),
+                      dest='subject_id')
+    parser.add_option("--hrf-model",
+                      dest='hrf_model', default='canonical with derivative',
+                      help="hrf model for design matrix")
+    parser.add_option("--drift-model",
+                      dest='drift_model', default='cosine',
+                      help='hrf model for design matrix')
+    parser.add_option("--glm-model",
+                      dest='glm_model', default='ar1',
+                      help='glm model')
+
+    (options, args) = parser.parse_args()
+
+    if options.subject_id is not None:
+        options.subject_id = [options.subject_id]
+    else:
+        options.subject_id = get_subjects_id(options.study_dir)
+
+    print_command_line_options(options)
+
+    openfmri_first_level(study_dir=options.study_dir,
+                         subjects_id=options.subject_id,
+                         model_id=options.model_id,
+                         hrf_model=options.hrf_model,
+                         drift_model=options.drift_model,
+                         glm_model=options.glm_model,
+                         n_jobs=options.n_jobs,
+                         verbose=1)

@@ -159,6 +159,12 @@ def check_contrasts(contrasts):
     return checked
 
 
+def print_command_line_options(options):
+    print 'Command line options:'
+    for key, value in options.__dict__.iteritems():
+        print ' %s: %s' % (key, value)
+
+
 def report(preproc_docs=None, intra_docs=None):
     if preproc_docs is not None:
         doc = preproc_docs[0]

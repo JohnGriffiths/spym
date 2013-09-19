@@ -89,18 +89,19 @@ def _plot_group_map(label, individual_maps, out_dir):
 
 if __name__ == '__main__':
     from optparse import OptionParser
+    from utils import print_command_line_options
 
     parser = OptionParser()
     parser.add_option("-d", "--data-dir", dest="study_dir",
-                      help="Full path to study directory")
+                      help="full path to study directory")
     parser.add_option("-r", "--report", choices=('maps', 'models'),
-                      help="The type of reporting to do",
+                      help="the type of reporting to do",
                       dest='report')
     parser.add_option("-m", "--model-id",
-                      help="Model id. Mandatory for models report",
+                      help="model id. Mandatory for models report",
                       dest='model_id')
     parser.add_option("-o", "--out-dir",
-                      help="Output directory. Created if does not exists.",
+                      help="output directory. Created if does not exists.",
                       dest='out_dir')
     parser.add_option(
         "-t", "--dtype",
@@ -108,16 +109,17 @@ if __name__ == '__main__':
         default='t',
         choices=('t', 'c', 'z', 'var'), dest='dtype')
     parser.add_option("-n", "--n-jobs",
-                      help="Number of parallel jobs. -1 means all cores.",
+                      help="number of parallel jobs. -1 means all cores.",
                       dest='n_jobs', type='int', default=-1)
     parser.add_option("--hrf-model",
-                      dest='hrf_model', default='canonical with derivative')
+                      dest='hrf_model', default='canonical with derivative',
+                      help="hrf model for design matrix")
     parser.add_option("--drift-model",
-                      dest='drift_model', default='cosine')
+                      dest='drift_model', default='cosine',
+                      help='hrf model for design matrix')
 
     (options, args) = parser.parse_args()
-
-    print options
+    print_command_line_options(options)
 
     if options.report == 'maps':
         plot_study_maps(study_dir=options.study_dir,
