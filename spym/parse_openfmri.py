@@ -37,8 +37,6 @@ def get_condition_key(study_dir):
 
 
 def get_conditions_name(study_dir, subject_dir):
-    sessions_id = get_sessions_id(subject_dir)
-
     conditions = {}
     fname = os.path.join(study_dir, 'models', 'model001', 'condition_key.txt')
 
@@ -50,18 +48,7 @@ def get_conditions_name(study_dir, subject_dir):
             except:  # skip empy lines
                 pass
 
-    print conditions
-    print sessions_id
-    names = []
-    for session_id in sessions_id:
-        task_id = session_id.split('_')[0]
-        print task_id
-        session_names = []
-        for cond_id in sorted(conditions[task_id].keys()):
-            session_names.append(conditions[task_id][cond_id])
-        names.append(session_names)
-
-    return names
+    return conditions
 
 
 def get_subjects_id(study_dir):
@@ -161,6 +148,7 @@ def get_task_contrasts(study_dir, subject_dir, model_id, hrf_model):
 def get_events(study_dir, subject_dir):
     events = []
     conditions = get_condition_key(study_dir)
+    conditions_name = get_conditions_name(study_dir, subject_dir)
 
     for session_id in get_sessions_id(subject_dir):
         session_dir = os.path.join(
@@ -177,7 +165,8 @@ def get_events(study_dir, subject_dir):
             else:
                 cond_onsets = np.array([[.0, .0, .0]])
             onsets.append(cond_onsets)
-            trials.append([condition_id] * cond_onsets.shape[0])
+            condition_name = conditions_name[task_id][condition_id]
+            trials.append([condition_name] * cond_onsets.shape[0])
 
         onsets = np.vstack(onsets)
         trials = np.concatenate(trials)
@@ -206,7 +195,6 @@ def get_orthogonalize(study_dir, subject_dir):
 
 def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
                          drift_model='cosine', motion=None, orth=None):
-
     design_matrices = []
     n_sessions = len(n_scans)
 
