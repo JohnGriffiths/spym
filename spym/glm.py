@@ -13,7 +13,7 @@ from utils import remove_special
 
 
 def _first_level(out_dir, data, design_matrices, contrasts,
-                    glm_model='ar1', mask='compute', verbose=1):
+                 glm_model='ar1', mask='compute', verbose=1):
     if verbose:
         print '%s:' % out_dir
 
@@ -67,17 +67,11 @@ def _first_level(out_dir, data, design_matrices, contrasts,
 #     if n_jobs == 1:
 #         for out_dir, data, design_matrices in izip(
 #                 out_dir_gen, data_gen, design_matrices_gen):
-
-
-    
 #             _first_level(out_dir, data,
 #                           design_matrices, contrasts,
 #                           glm_model, mask, verbose)
 #     else:
 #         for out_dir in out_dir_gen:
-            
-
-        
 #         Parallel(n_jobs=n_jobs)(delayed(
 #             _first_level)(out_dir, data,
 #                           design_matrices, contrasts,
@@ -86,26 +80,23 @@ def _first_level(out_dir, data, design_matrices, contrasts,
 #                     out_dir_gen, data_gen, design_matrices_gen)
 #         )
 
-
 def openfmri_first_level(study_dir, subjects_id, model_id,
                          hrf_model='canonical with derivative',
                          drift_model='cosine',
-                         glm_model='ar1',  n_jobs=-1, verbose=1):
+                         glm_model='ar1', n_jobs=-1, verbose=1):
     """ Utility function to compute first level GLMs in parallel
     """
 
     if n_jobs == 1:
         for subject_id in subjects_id:
             _openfmri_first_level(study_dir, subject_id, model_id,
-                                      hrf_model, drift_model, glm_model,
-                                      verbose - 1)
+                                  hrf_model, drift_model, glm_model,
+                                  verbose - 1)
     else:
-        Parallel(n_jobs=n_jobs)(delayed(
-            _openfmri_first_level)(
-                study_dir, subject_id, model_id,
-                hrf_model, drift_model, glm_model, verbose - 1)
-                for subject_id in subjects_id
-            )
+        Parallel(n_jobs=n_jobs)(delayed(_openfmri_first_level)(
+            study_dir, subject_id, model_id,
+            hrf_model, drift_model, glm_model,
+            verbose - 1) for subject_id in subjects_id)
 
 
 def _openfmri_first_level(study_dir, subject_id, model_id,

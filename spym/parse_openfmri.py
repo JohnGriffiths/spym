@@ -36,10 +36,38 @@ def get_condition_key(study_dir):
     return conditions
 
 
+def get_conditions_name(study_dir, subject_dir):
+    sessions_id = get_sessions_id(subject_dir)
+
+    conditions = {}
+    fname = os.path.join(study_dir, 'models', 'model001', 'condition_key.txt')
+
+    with open(fname, 'rb') as f:
+        for line in f.read().split('\n'):
+            try:
+                task_id, cond_id, cond_name = line.split(None, 2)
+                conditions.setdefault(task_id, {})[cond_id] = cond_name
+            except:  # skip empy lines
+                pass
+
+    print conditions
+    print sessions_id
+    names = []
+    for session_id in sessions_id:
+        task_id = session_id.split('_')[0]
+        print task_id
+        session_names = []
+        for cond_id in sorted(conditions[task_id].keys()):
+            session_names.append(conditions[task_id][cond_id])
+        names.append(session_names)
+
+    return names
+
+
 def get_subjects_id(study_dir):
     return [os.path.split(p)[1]
-    for p in glob.glob(os.path.join(study_dir, 'sub*'))
-                       if os.path.isdir(p)]
+            for p in glob.glob(os.path.join(study_dir, 'sub*'))
+            if os.path.isdir(p)]
 
 
 def get_sessions_id(subject_dir):
@@ -267,6 +295,8 @@ def _load_openfmri(study_dir, subject_id, model_id,
     doc['design_matrices'] = make_design_matrices(
         events, doc['n_scans'], doc['tr'],
         hrf_model, drift_model, doc['motion'], orth=orth)
+
+    doc['sessions_id'] = get_sessions_id(subject_dir)
 
     return doc
 
