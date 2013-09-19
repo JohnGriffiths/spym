@@ -7,7 +7,7 @@ import nibabel as nb
 from nipy.modalities.fmri.glm import FMRILinearModel
 from joblib import Parallel, delayed
 
-from parse_openfmri import _load_openfmri
+from parsing_openfmri import _load_openfmri
 from utils import check_niimgs, check_design_matrices, check_contrasts
 from utils import remove_special
 

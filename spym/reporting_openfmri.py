@@ -12,7 +12,7 @@ from nipy.labs.viz import plot_map
 from nipy.labs.viz_tools import cm
 from joblib import Parallel, delayed
 
-from parse_openfmri import load_openfmri
+from parsing_openfmri import load_openfmri
 
 # GLOBALS
 pwd = os.path.dirname(os.path.abspath(__file__))
