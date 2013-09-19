@@ -238,7 +238,7 @@ def make_design_matrices(events, n_scans, tr, hrf_model='canonical',
                         design_matrix.matrix[:, x], design_matrix.matrix[:, y])
                     design_matrix.matrix[:, x] = reg
 
-        design_matrices.append(design_matrix.matrix)
+        design_matrices.append(design_matrix)
 
     return design_matrices
 
@@ -280,9 +280,12 @@ def _load_openfmri(study_dir, subject_id, model_id,
     events = get_events(study_dir, subject_dir)
     orth = get_orthogonalize(study_dir, subject_dir)
 
-    doc['design_matrices'] = make_design_matrices(
+    doc['design_matrices_object'] = make_design_matrices(
         events, doc['n_scans'], doc['tr'],
         hrf_model, drift_model, doc['motion'], orth=orth)
+
+    doc['design_matrices'] = [dm.matrix
+                              for dm in doc['design_matrices_object']]
 
     doc['sessions_id'] = get_sessions_id(subject_dir)
 
