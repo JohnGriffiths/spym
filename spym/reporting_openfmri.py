@@ -22,7 +22,7 @@ mask = nb.load(mask_file).get_data().astype('bool')
 affine = nb.load(mask_file).get_affine()
 
 
-def plot_study_models(study_dir, model_id, out_dir,
+def plot_study_models(study_dir, out_dir, model_id,
                       hrf_model='canonical with derivative',
                       drift_model='cosine',
                       n_jobs=-1, verbose=1):
@@ -36,10 +36,10 @@ def plot_study_models(study_dir, model_id, out_dir,
                          n_jobs=n_jobs, verbose=verbose)
 
     Parallel(n_jobs=n_jobs)(
-        delayed(_plot_study_models)(doc, model_id, out_dir) for doc in docs)
+        delayed(_plot_study_models)(doc, out_dir, model_id) for doc in docs)
 
 
-def _plot_study_models(doc, model_id, out_dir):
+def _plot_study_models(doc, out_dir, model_id):
         for session_id, dm in zip(doc['sessions_id'],
                                   doc['design_matrices_object']):
 
@@ -117,13 +117,18 @@ if __name__ == '__main__':
 
     (options, args) = parser.parse_args()
 
+    print options
+
     if options.report == 'maps':
-        plot_study_maps(options.study_dir, options.out_dir,
-                        options.model_id, options.dtype,
-                        options.n_jobs)
+        plot_study_maps(study_dir=options.study_dir,
+                        out_dir=options.out_dir,
+                        model_id=options.model_id,
+                        dtype=options.dtype,
+                        n_jobs=options.n_jobs)
     elif options.report == 'models':
-        plot_study_models(options.study_dir, options.model_id,
-                          options.out_dir,
-                          options.hrf_model,
-                          options.drift_model,
-                          options.n_jobs)
+        plot_study_models(study_dir=options.study_dir,
+                          out_dir=options.out_dir,
+                          model_id=options.model_id,
+                          hrf_model=options.hrf_model,
+                          drift_model=options.drift_model,
+                          n_jobs=options.n_jobs)
