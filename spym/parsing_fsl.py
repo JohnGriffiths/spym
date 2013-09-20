@@ -27,7 +27,6 @@ def get_subject_stats(level2_task_dir, dtype='t', names=None):
 
 
 def get_study_stats(study_dir):
-    study_id = os.path.split(study_dir)[1]
     subjects = os.path.join(study_dir, 'sub???')
     contrasts = {}
     for subject_dir in glob.glob(subjects):
