@@ -107,6 +107,7 @@ def _get_contrast(line, hrf_model, offset):
         float(con_val[0])
         con_val = con_val.astype('float')
     except:  # in case there is a con name with a space in it
+        contrast_id = line[1 + offset]
         con_val = con_val[1:].astype('float')
     if 'with derivative' in hrf_model:
         con_val = np.insert(con_val, np.arange(con_val.size) + 1, 0)
