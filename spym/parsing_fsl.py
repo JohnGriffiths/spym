@@ -8,8 +8,6 @@ def get_contrast_names(level1_task_dir):
         contrasts = dict([
             re.findall('\/ContrastName(\d+)\s(.*)\s', l)[0]
             for l in f.read().split('\n') if l.startswith('/Contrast')])
-    if contrasts == {} and os.path.join()
-
     return contrasts
 
 
