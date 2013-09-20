@@ -8,6 +8,8 @@ def get_contrast_names(level1_task_dir):
         contrasts = dict([
             re.findall('\/ContrastName(\d+)\s(.*)\s', l)[0]
             for l in f.read().split('\n') if l.startswith('/Contrast')])
+    if contrasts == {} and os.path.join()
+
     return contrasts
 
 
@@ -32,13 +34,14 @@ def get_study_stats(study_dir):
     for subject_dir in glob.glob(subjects):
         subject_id = os.path.split(subject_dir)[1]
         level1_task_dirs = os.path.join(
-            subject_dir, 'model', 'model001', 'task???_run001.feat')
+            subject_dir, 'model', 'model001', 'task???_run???.feat')
         level2_task_dirs = os.path.join(
             subject_dir, 'model', 'model001', 'task???.gfeat')
         tasks_contrasts_names = {}
         for lvl1_dir in glob.glob(level1_task_dirs):
             task_id = os.path.split(lvl1_dir)[1].split('_run')[0]
-            tasks_contrasts_names[task_id] = get_contrast_names(lvl1_dir)
+            tasks_contrasts_names.setdefault(task_id, {}).update(
+                get_contrast_names(lvl1_dir))
         for lvl2_dir in glob.glob(level2_task_dirs):
             task_id = os.path.split(lvl2_dir)[1].split('.gfeat')[0]
             stat_files = get_subject_stats(
