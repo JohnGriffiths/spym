@@ -149,7 +149,6 @@ def get_events(study_dir, subject_dir):
     events = []
     conditions = get_condition_key(study_dir)
     conditions_name = get_conditions_name(study_dir, subject_dir)
-
     for session_id in get_sessions_id(subject_dir):
         session_dir = os.path.join(
             subject_dir, 'model', 'model001', 'onsets', session_id)
@@ -169,7 +168,6 @@ def get_events(study_dir, subject_dir):
             n_trials = cond_onsets.shape[0]
             trials.append(
                 ['%s_%s' % (condition_id, condition_name)] * n_trials)
-
         onsets = np.vstack(onsets)
         trials = np.concatenate(trials)
 
