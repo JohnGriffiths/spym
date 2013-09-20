@@ -4,7 +4,7 @@ import glob
 
 
 def get_contrast_names(level1_task_dir):
-    with os.path.join(level1_task_dir, 'design.con') as f:
+    with open(os.path.join(level1_task_dir, 'design.con'), 'rb') as f:
         contrasts = dict([
             re.findall('\/ContrastName(\d+)\s(.*)\s', l)[0]
             for l in f.read().split('\n') if l.startswith('/Contrast')])
