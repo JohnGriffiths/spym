@@ -3,11 +3,14 @@ import os
 import glob
 
 
-def get_contrast_names(level1_task_dir):
+def get_contrast_names(task_id, level1_task_dir):
     with open(os.path.join(level1_task_dir, 'design.con'), 'rb') as f:
         contrasts = dict([
             re.findall('\/ContrastName(\d+)\s(.*)\s', l)[0]
             for l in f.read().split('\n') if l.startswith('/Contrast')])
+    for k in contrasts:
+        contrasts[k] = '%s_%s' % (task_id, contrasts[k])
+
     return contrasts
 
 
@@ -39,7 +42,7 @@ def get_study_stats(study_dir):
         for lvl1_dir in glob.glob(level1_task_dirs):
             task_id = os.path.split(lvl1_dir)[1].split('_run')[0]
             tasks_contrasts_names.setdefault(task_id, {}).update(
-                get_contrast_names(lvl1_dir))
+                get_contrast_names(task_id, lvl1_dir))
         for lvl2_dir in glob.glob(level2_task_dirs):
             task_id = os.path.split(lvl2_dir)[1].split('.gfeat')[0]
             stat_files = get_subject_stats(
