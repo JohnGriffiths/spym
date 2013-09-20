@@ -11,7 +11,7 @@ def get_contrast_names(level1_task_dir):
     return contrasts
 
 
-def get_stats(level2_task_dir, dtype='t', names=None):
+def get_subject_stats(level2_task_dir, dtype='t', names=None):
     stat_files = os.path.join(level2_task_dir, 'cope*.feat',
                               'stats', '%sstat1.nii.gz' % dtype)
     stats = {}
@@ -24,3 +24,26 @@ def get_stats(level2_task_dir, dtype='t', names=None):
         stats.setdefault(stat_id, stat_file)
 
     return stats
+
+
+def get_study_stats(study_dir):
+    study_id = os.path.split(study_dir)[1]
+    subjects = os.path.join(study_dir, 'sub???')
+    contrasts = {}
+    for subject_dir in glob.glob(subjects):
+        subject_id = os.path.split(subject_dir)[1]
+        level1_task_dirs = os.path.join(
+            subject_dir, 'model', 'model001', 'task???_run001.feat')
+        level2_task_dirs = os.path.join(
+            subject_dir, 'model', 'model001', 'task???.gfeat')
+        tasks_contrasts_names = {}
+        for lvl1_dir in glob.glob(level1_task_dirs):
+            task_id = os.path.split(lvl1_dir)[1].split('_run')[0]
+            tasks_contrasts_names[task_id] = get_contrast_names(lvl1_dir)
+        for lvl2_dir in glob.glob(level2_task_dirs):
+            task_id = os.path.split(lvl2_dir)[1].split('.gfeat')[0]
+            stat_files = get_subject_stats(
+                lvl2_dir, names=tasks_contrasts_names[task_id])
+            contrasts.setdefault(subject_id, {}).update(stat_files)
+
+    return contrasts
