@@ -102,7 +102,12 @@ def get_scans(subject_dir):
 
 def _get_contrast(line, hrf_model, offset):
     contrast_id = line[offset]
-    con_val = np.array(line[1 + offset:]).astype('float')
+    con_val = np.array(line[1 + offset:])
+    try:
+        float(con_val[0])
+        con_val = con_val.astype('float')
+    except:  # in case there is a con name with a space in it
+        con_val = con_val[1:].astype('float')
     if 'with derivative' in hrf_model:
         con_val = np.insert(con_val, np.arange(con_val.size) + 1, 0)
     return contrast_id, con_val
