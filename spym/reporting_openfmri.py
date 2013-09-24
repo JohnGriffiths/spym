@@ -81,14 +81,14 @@ def _plot_group_map(label, individual_maps, out_dir):
     mean_map = np.zeros(mask.shape)
     mean_map[mask] = np.mean(individual_maps, axis=0)
     vmax = np.abs(mean_map).max()
-    threshold = stats.scoreatpercentile(mean_map, 80)
+    threshold = stats.scoreatpercentile(mean_map[mask], 95)
     plot_map(mean_map, affine, slicer='z',
              cut_coords=[-40, -20, -5, 0, 10, 30, 60],
              vmin=-vmax, vmax=vmax, threshold=threshold,
              cmap=cm.cold_hot, title='%s scoreatper=%.2f' % (
                  label, threshold))
     pl.savefig(os.path.join(out_dir, 'group_%s.png' % label), dpi=500)
-    img = nb.Nifti1Image(img, affine=affine)
+    img = nb.Nifti1Image(mean_map, affine=affine)
     nb.save(img, os.path.join(out_dir, 'group_%s.nii.gz' % label))
 
 
