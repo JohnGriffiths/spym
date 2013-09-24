@@ -89,7 +89,7 @@ def _plot_group_map(label, individual_maps, out_dir):
                  label, threshold))
     pl.savefig(os.path.join(out_dir, 'group_%s.png' % label), dpi=500)
     img = nb.Nifti1Image(img, affine=affine)
-    nb.save(img, os.path.join(out_dir, 'group_%s.nii.gz' % label)
+    nb.save(img, os.path.join(out_dir, 'group_%s.nii.gz' % label))
 
 
 if __name__ == '__main__':
