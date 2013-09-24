@@ -51,8 +51,11 @@ def _plot_study_models(doc, out_dir, model_id):
 
 
 def plot_study_maps(study_dir, out_dir, model_id=None, dtype='t', n_jobs=-1):
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    try:
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+    except:
+        pass
 
     group_maps = {}
 
