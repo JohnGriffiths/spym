@@ -50,7 +50,8 @@ def _plot_study_models(doc, out_dir, model_id):
             pl.savefig(os.path.join(out_dir, 'design_%s.png' % fname), pdi=500)
 
 
-def plot_study_maps(study_dir, out_dir, model_id=None, dtype='t', n_jobs=-1):
+def plot_study_maps(study_dir, out_dir, model_id=None,
+                    dtype='t', contrasts=None, n_jobs=-1):
     try:
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
@@ -60,19 +61,31 @@ def plot_study_maps(study_dir, out_dir, model_id=None, dtype='t', n_jobs=-1):
     group_maps = {}
 
     study_id = os.path.split(study_dir)[1]
-    for subject_dir in glob.iglob(os.path.join(study_dir, 'sub???')):
-        if model_id is None:
-            models = os.path.join(subject_dir, 'model', '*')
-        else:
-            models = os.path.join(subject_dir, 'model', model_id)
-        for model_dir in glob.iglob(models):
-            model_id = os.path.split(model_dir)[1]
-            maps_dir = os.path.join(model_dir, '%s_maps' % dtype)
-            for x in glob.iglob(os.path.join(maps_dir, '*.nii.gz')):
-                map_id = os.path.split(x)[1].split('.nii.gz')[0]
-                group_id = '%s_%s_%s' % (study_id, model_id, map_id)
-                data = nb.load(x).get_data()[mask]
-                group_maps.setdefault(group_id, []).append(data)
+
+    if contrasts is not None:
+        for x in glob.iglob(os.path.join(study_dir, contrasts)):
+            print x
+            map_id = x.split(os.path.sep)[-1].split('.nii.gz')[0]
+            model_id = x.split(os.path.sep)[-3]
+            group_id = '%s_%s_%s' % (study_id, model_id, map_id)
+            data = nb.load(x).get_data()[mask]
+            group_maps.setdefault(group_id, []).append(data)
+
+    else:
+        for subject_dir in glob.iglob(os.path.join(study_dir, 'sub???')):
+            if model_id is None:
+                models = os.path.join(subject_dir, 'model', '*')
+            else:
+                models = os.path.join(subject_dir, 'model', model_id)
+
+            for model_dir in glob.iglob(models):
+                model_id = os.path.split(model_dir)[1]
+                maps_dir = os.path.join(model_dir, '%s_maps' % dtype)
+                for x in glob.iglob(os.path.join(maps_dir, '*.nii.gz')):
+                    map_id = os.path.split(x)[1].split('.nii.gz')[0]
+                    group_id = '%s_%s_%s' % (study_id, model_id, map_id)
+                    data = nb.load(x).get_data()[mask]
+                    group_maps.setdefault(group_id, []).append(data)
 
     Parallel(n_jobs=n_jobs)(
         delayed(_plot_group_map)(
@@ -108,6 +121,12 @@ if __name__ == '__main__':
     parser.add_option("-m", "--model-id",
                       help="model id. Mandatory for models report",
                       dest='model_id')
+    parser.add_option("-c", "--contrasts",
+                      help=("The pattern of the maps to plot, "
+                            "relative to data_dir. Works only with "
+                            "--report=maps. In this case "
+                            "model_id and dtype are ignored"),
+                      dest='contrasts')
     parser.add_option("-o", "--out-dir",
                       help="output directory. Created if does not exists.",
                       dest='out_dir')
@@ -134,6 +153,7 @@ if __name__ == '__main__':
                         out_dir=options.out_dir,
                         model_id=options.model_id,
                         dtype=options.dtype,
+                        contrasts=options.contrasts,
                         n_jobs=options.n_jobs)
     elif options.report == 'models':
         plot_study_models(study_dir=options.study_dir,
