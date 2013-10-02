@@ -97,7 +97,9 @@ def _plot_group_map(label, individual_maps, out_dir):
     mean_map[mask] = np.mean(individual_maps, axis=0)
     vmax = np.abs(mean_map).max()
     threshold = stats.scoreatpercentile(mean_map[mask], 95)
-    study_id, model_id, map_id = label.split('_')[0]
+    map_id = label.split('_', 2)[-1]
+    study_id = label.split('_', 2)[-3]
+
     title = '%s_%s' % (study_id, map_id)
     plot_map(mean_map, affine, slicer='z',
              cut_coords=[-40, -20, -5, 0, 10, 30, 60],
