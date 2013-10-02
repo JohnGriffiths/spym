@@ -47,7 +47,7 @@ def _plot_study_models(doc, out_dir, model_id):
             dm.show()
             fname = '_'.join([doc['study_id'], doc['subject_id'],
                               model_id, session_id])
-            pl.savefig(os.path.join(out_dir, 'design_%s.png' % fname), pdi=500)
+            pl.savefig(os.path.join(out_dir, '%s.png' % fname), pdi=500)
 
 
 def plot_study_maps(study_dir, out_dir, model_id=None,
@@ -64,7 +64,6 @@ def plot_study_maps(study_dir, out_dir, model_id=None,
 
     if contrasts is not None:
         for x in glob.iglob(os.path.join(study_dir, contrasts)):
-            print x
             map_id = x.split(os.path.sep)[-1].split('.nii.gz')[0]
             model_id = x.split(os.path.sep)[-3]
             group_id = '%s_%s_%s' % (study_id, model_id, map_id)
@@ -98,14 +97,15 @@ def _plot_group_map(label, individual_maps, out_dir):
     mean_map[mask] = np.mean(individual_maps, axis=0)
     vmax = np.abs(mean_map).max()
     threshold = stats.scoreatpercentile(mean_map[mask], 95)
+    study_id, model_id, map_id = label.split('_')[0]
+    title = '%s_%s' % (study_id, map_id)
     plot_map(mean_map, affine, slicer='z',
              cut_coords=[-40, -20, -5, 0, 10, 30, 60],
              vmin=-vmax, vmax=vmax, threshold=threshold,
-             cmap=cm.cold_hot, title='%s scoreatper=%.2f' % (
-                 label, threshold))
-    pl.savefig(os.path.join(out_dir, 'group_%s.png' % label), dpi=500)
+             cmap=cm.cold_hot, title=title)
+    pl.savefig(os.path.join(out_dir, '%s.png' % label), dpi=500)
     img = nb.Nifti1Image(mean_map, affine=affine)
-    nb.save(img, os.path.join(out_dir, 'group_%s.nii.gz' % label))
+    nb.save(img, os.path.join(out_dir, '%s.nii.gz' % label))
 
 
 if __name__ == '__main__':
