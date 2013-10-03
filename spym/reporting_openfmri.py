@@ -105,7 +105,7 @@ def _plot_group_map(label, individual_maps, out_dir):
              cut_coords=[-40, -20, -5, 0, 10, 30, 60],
              vmin=-vmax, vmax=vmax, threshold=threshold,
              cmap=cm.cold_hot, title=title)
-    pl.savefig(os.path.join(out_dir, '%s.png' % label), dpi=500)
+    pl.savefig(os.path.join(out_dir, '%s.png' % label), dpi=200)
     img = nb.Nifti1Image(mean_map, affine=affine)
     nb.save(img, os.path.join(out_dir, '%s.nii.gz' % label))
 
