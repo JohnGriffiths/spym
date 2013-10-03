@@ -100,14 +100,14 @@ def _plot_group_map(label, individual_maps, out_dir):
     map_id = label.split('_', 2)[-1]
     study_id = label.split('_', 2)[-3]
 
-    title = '%s_%s' % (study_id, map_id)
+    title = '%s__%s' % (study_id, map_id)
     plot_map(mean_map, affine, slicer='z',
              cut_coords=[-40, -20, -5, 0, 10, 30, 60],
              vmin=-vmax, vmax=vmax, threshold=threshold,
              cmap=cm.cold_hot, title=title)
-    pl.savefig(os.path.join(out_dir, '%s.png' % label), dpi=200)
+    pl.savefig(os.path.join(out_dir, '%s.png' % title), dpi=200)
     img = nb.Nifti1Image(mean_map, affine=affine)
-    nb.save(img, os.path.join(out_dir, '%s.nii.gz' % label))
+    nb.save(img, os.path.join(out_dir, '%s.nii.gz' % title))
 
 
 if __name__ == '__main__':
