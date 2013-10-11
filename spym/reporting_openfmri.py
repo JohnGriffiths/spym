@@ -102,7 +102,7 @@ def _plot_group_map(label, individual_maps, out_dir):
 
     title = '%s__%s' % (study_id, map_id)
     plot_map(mean_map, affine, slicer='z',
-             cut_coords=[-40, -20, -5, 0, 10, 30, 60],
+             cut_coords=7,
              vmin=-vmax, vmax=vmax, threshold=threshold,
              cmap=cm.cold_hot, title=title)
     pl.savefig(os.path.join(out_dir, '%s.png' % title), dpi=200)
