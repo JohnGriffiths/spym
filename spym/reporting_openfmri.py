@@ -96,7 +96,7 @@ def _plot_group_map(label, individual_maps, out_dir):
     mean_map = np.zeros(mask.shape)
     mean_map[mask] = np.mean(individual_maps, axis=0)
     vmax = np.abs(mean_map).max()
-    threshold = stats.scoreatpercentile(mean_map[mask], 95)
+    threshold = stats.scoreatpercentile(mean_map[mask], 90)
     map_id = label.split('_', 2)[-1]
     study_id = label.split('_', 2)[-3]
 
