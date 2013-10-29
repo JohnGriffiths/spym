@@ -111,7 +111,6 @@ def find_data_dir(wd, fpath):
                     return os.path.dirname(p)
     else:
         return os.path.dirname(fpath)
-    raise Exception('bla')
     return ''
 
 
